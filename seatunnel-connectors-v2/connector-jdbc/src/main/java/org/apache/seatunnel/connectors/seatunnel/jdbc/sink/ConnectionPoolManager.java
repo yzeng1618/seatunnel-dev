@@ -39,15 +39,42 @@ public class ConnectionPoolManager {
     }
 
     public Connection getConnection(int index) {
-        return connectionMap.computeIfAbsent(
-                index,
-                i -> {
-                    try {
-                        return connectionPool.getConnection();
-                    } catch (SQLException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
+        // 先检查连接池是否已关闭
+        try {
+            if (connectionPool == null || connectionPool.isClosed()) {
+                log.warn("Connection pool is null or already closed");
+                return null;
+            }
+        } catch (Exception e) {
+            log.warn("Error checking if connection pool is closed: {}", e.getMessage());
+            return null;
+        }
+
+        try {
+            return connectionMap.computeIfAbsent(
+                    index,
+                    i -> {
+                        try {
+                            return connectionPool.getConnection();
+                        } catch (SQLException e) {
+                            // 如果是连接池已关闭的异常，返回null
+                            if (e.getMessage() != null
+                                    && (e.getMessage().contains("HikariDataSource has been closed")
+                                            || e.getMessage().contains("Connection is closed")
+                                            || e.getMessage().contains("Pool has been shutdown"))) {
+                                log.warn(
+                                        "Connection pool closed when getting connection: {}",
+                                        e.getMessage());
+                                return null;
+                            }
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (Exception e) {
+            // 捕获所有异常，包括可能的NullPointerException
+            log.warn("Error getting connection from pool: {}", e.getMessage());
+            return null;
+        }
     }
 
     public boolean containsConnection(int index) {
