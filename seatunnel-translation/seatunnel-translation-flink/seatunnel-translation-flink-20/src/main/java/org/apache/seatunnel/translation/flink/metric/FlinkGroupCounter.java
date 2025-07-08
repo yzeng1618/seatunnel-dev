@@ -22,67 +22,115 @@ import org.apache.seatunnel.api.common.metrics.Unit;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * A counter implementation that tracks values globally across all instances. This is used to
+ * collect metrics from all parallel tasks.
+ */
 @Slf4j
 public class FlinkGroupCounter implements Counter {
-    private final String name;
-    private final org.apache.flink.metrics.Counter counter;
 
-    public FlinkGroupCounter(String name, org.apache.flink.metrics.Counter counter) {
+    /** 全局计数器值存储 */
+    public static final Map<String, Long> COUNTER_VALUES = new ConcurrentHashMap<>();
+
+    /** 本地计数器值 */
+    private final AtomicLong localCounter = new AtomicLong(0);
+
+    /** 计数器名称 */
+    private final String name;
+
+    /** Flink 计数器 */
+    private final org.apache.flink.metrics.Counter flinkCounter;
+
+    /**
+     * 创建一个新的 FlinkGroupCounter
+     *
+     * @param name 计数器名称
+     * @param flinkCounter Flink 计数器
+     */
+    public FlinkGroupCounter(String name, org.apache.flink.metrics.Counter flinkCounter) {
         this.name = name;
-        this.counter = counter;
+        this.flinkCounter = flinkCounter;
+        log.debug("Created FlinkGroupCounter: {}", name);
     }
 
     @Override
     public void inc() {
-        counter.inc();
+        inc(1L);
     }
 
     @Override
     public void inc(long n) {
-        counter.inc(n);
-    }
+        if (n <= 0) {
+            return;
+        }
 
-    @Override
-    public void dec() {
-        try {
-            // Flink 1.20 支持 inc(-1) 操作
-            counter.inc(-1);
-        } catch (Exception e) {
-            log.warn("Error decrementing counter: {}", name, e);
+        // 更新本地计数器
+        localCounter.addAndGet(n);
+
+        // 更新 Flink 计数器
+        flinkCounter.inc(n);
+
+        // 更新全局计数器
+        updateGlobalCounter(name, n);
+
+        // 定期记录日志
+        long count = localCounter.get();
+        if (count % 100000 == 0) {
+            log.info("Counter [{}] reached: {}", name, count);
         }
     }
 
     @Override
-    public void dec(long n) {
-        try {
-            // Flink 1.20 支持 inc(-n) 操作
-            counter.inc(-n);
-        } catch (Exception e) {
-            log.warn("Error decrementing counter by {}: {}", n, name, e);
-        }
-    }
+    public void dec() {}
 
     @Override
-    public void set(long n) {
-        // Flink 1.20 不支持直接设置计数器值
-        log.warn(
-                "Flink metrics does not support set operation directly, ignoring set({}) for: {}",
-                n,
-                name);
-    }
+    public void dec(long n) {}
+
+    @Override
+    public void set(long n) {}
 
     @Override
     public long getCount() {
-        return counter.getCount();
+        return localCounter.get();
+    }
+
+    /**
+     * 更新全局计数器值
+     *
+     * @param name 计数器名称
+     * @param delta 增量值
+     */
+    private static void updateGlobalCounter(String name, long delta) {
+        COUNTER_VALUES.compute(name, (k, v) -> (v == null) ? delta : v + delta);
+    }
+
+    /**
+     * 获取全局计数器值
+     *
+     * @param name 计数器名称
+     * @return 计数器值，如果不存在则返回 0
+     */
+    public static long getGlobalCounterValue(String name) {
+        return COUNTER_VALUES.getOrDefault(name, 0L);
+    }
+
+    /** 重置所有全局计数器 */
+    public static void resetAllGlobalCounters() {
+        COUNTER_VALUES.clear();
+        log.info("All global counters have been reset");
     }
 
     @Override
     public String name() {
-        return name;
+        return "";
     }
 
     @Override
     public Unit unit() {
-        return Unit.COUNT;
+        return null;
     }
 }

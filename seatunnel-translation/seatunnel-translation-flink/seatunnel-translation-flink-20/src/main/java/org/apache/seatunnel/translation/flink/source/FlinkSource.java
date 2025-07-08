@@ -19,8 +19,6 @@ package org.apache.seatunnel.translation.flink.source;
 
 import org.apache.seatunnel.shade.com.typesafe.config.Config;
 
-import org.apache.seatunnel.api.common.metrics.Counter;
-import org.apache.seatunnel.api.common.metrics.MetricNames;
 import org.apache.seatunnel.api.serialization.Serializer;
 import org.apache.seatunnel.api.source.SeaTunnelSource;
 import org.apache.seatunnel.api.source.SourceSplit;
@@ -78,35 +76,6 @@ public class FlinkSource<SplitT extends SourceSplit, EnumStateT extends Serializ
                 new FlinkSourceReaderContext(readerContext, source);
         org.apache.seatunnel.api.source.SourceReader<SeaTunnelRow, SplitT> reader =
                 source.createReader(context);
-
-        // 注册累加器
-        try {
-            readerContext
-                    .metricGroup()
-                    .gauge(
-                            "seatunnel_" + MetricNames.SOURCE_RECEIVED_COUNT,
-                            () -> {
-                                Counter counter =
-                                        context.getMetricsContext()
-                                                .counter(MetricNames.SOURCE_RECEIVED_COUNT);
-                                return counter.getCount();
-                            });
-
-            readerContext
-                    .metricGroup()
-                    .gauge(
-                            "seatunnel_" + MetricNames.SOURCE_RECEIVED_BYTES,
-                            () -> {
-                                Counter counter =
-                                        context.getMetricsContext()
-                                                .counter(MetricNames.SOURCE_RECEIVED_BYTES);
-                                return counter.getCount();
-                            });
-
-            log.info("Registered source metrics as gauges");
-        } catch (Exception e) {
-            log.warn("Failed to register source metrics as gauges", e);
-        }
 
         // 使用common模块中的FlinkSourceReader类
         return new org.apache.seatunnel.translation.flink.source.FlinkSourceReader<>(

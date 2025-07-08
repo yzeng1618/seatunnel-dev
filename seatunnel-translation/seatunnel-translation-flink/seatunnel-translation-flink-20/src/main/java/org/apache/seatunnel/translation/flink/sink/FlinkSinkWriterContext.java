@@ -24,6 +24,7 @@ import org.apache.seatunnel.api.sink.SinkWriter;
 import org.apache.seatunnel.translation.flink.metric.FlinkMetricContext;
 
 import org.apache.flink.api.connector.sink2.Sink;
+import org.apache.flink.metrics.MetricGroup;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -57,7 +58,8 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
             return new FlinkMetricContext(initContext.metricGroup());
         } catch (Exception e) {
             log.warn("Failed to create metrics context", e);
-            return null;
+            // 返回一个空的MetricsContext而不是null，避免NPE
+            return new FlinkMetricContext((MetricGroup) null);
         }
     }
 

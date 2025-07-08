@@ -23,12 +23,9 @@ import org.apache.seatunnel.common.utils.StringFormatUtils;
 
 import org.apache.flink.api.common.JobExecutionResult;
 
-import lombok.extern.slf4j.Slf4j;
-
 import java.time.Duration;
 import java.time.LocalDateTime;
 
-@Slf4j
 public final class FlinkJobMetricsSummary {
 
     private final JobExecutionResult jobExecutionResult;
@@ -85,48 +82,6 @@ public final class FlinkJobMetricsSummary {
 
     @Override
     public String toString() {
-        // 获取指标值，如果为null则使用0
-        Object sourceReceivedCount =
-                jobExecutionResult
-                        .getAllAccumulatorResults()
-                        .getOrDefault(MetricNames.SOURCE_RECEIVED_COUNT, 0L);
-
-        Object sinkWriteCount =
-                jobExecutionResult
-                        .getAllAccumulatorResults()
-                        .getOrDefault(MetricNames.SINK_WRITE_COUNT, 0L);
-
-        Object sourceReceivedBytes =
-                jobExecutionResult
-                        .getAllAccumulatorResults()
-                        .getOrDefault(MetricNames.SOURCE_RECEIVED_BYTES, 0L);
-
-        Object sinkWriteBytes =
-                jobExecutionResult
-                        .getAllAccumulatorResults()
-                        .getOrDefault(MetricNames.SINK_WRITE_BYTES, 0L);
-
-        // 检查指标是否为null，如果是则记录警告并使用0
-        if (sourceReceivedCount == null) {
-            log.warn("SOURCE_RECEIVED_COUNT is null, using 0");
-            sourceReceivedCount = 0L;
-        }
-
-        if (sinkWriteCount == null) {
-            log.warn("SINK_WRITE_COUNT is null, using 0");
-            sinkWriteCount = 0L;
-        }
-
-        if (sourceReceivedBytes == null) {
-            log.warn("SOURCE_RECEIVED_BYTES is null, using 0");
-            sourceReceivedBytes = 0L;
-        }
-
-        if (sinkWriteBytes == null) {
-            log.warn("SINK_WRITE_BYTES is null, using 0");
-            sinkWriteBytes = 0L;
-        }
-
         return StringFormatUtils.formatTable(
                 "Job Statistic Information",
                 "Start Time",

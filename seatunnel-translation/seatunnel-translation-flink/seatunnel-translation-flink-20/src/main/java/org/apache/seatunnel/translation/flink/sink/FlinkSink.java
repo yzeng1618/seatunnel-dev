@@ -17,8 +17,6 @@
 
 package org.apache.seatunnel.translation.flink.sink;
 
-import org.apache.seatunnel.api.common.metrics.Counter;
-import org.apache.seatunnel.api.common.metrics.MetricNames;
 import org.apache.seatunnel.api.sink.SeaTunnelSink;
 import org.apache.seatunnel.api.table.catalog.CatalogTable;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
@@ -57,35 +55,6 @@ public class FlinkSink implements Sink<SeaTunnelRow> {
         // 创建SeaTunnel SinkWriter
         org.apache.seatunnel.api.sink.SinkWriter<SeaTunnelRow, ?, ?> seatunnelWriter =
                 seaTunnelSink.createWriter(writerContext);
-
-        // 注册累加器
-        try {
-            context.metricGroup()
-                    .gauge(
-                            "seatunnel_" + MetricNames.SINK_WRITE_COUNT,
-                            () -> {
-                                Counter counter =
-                                        writerContext
-                                                .getMetricsContext()
-                                                .counter(MetricNames.SINK_WRITE_COUNT);
-                                return counter.getCount();
-                            });
-
-            context.metricGroup()
-                    .gauge(
-                            "seatunnel_" + MetricNames.SINK_WRITE_BYTES,
-                            () -> {
-                                Counter counter =
-                                        writerContext
-                                                .getMetricsContext()
-                                                .counter(MetricNames.SINK_WRITE_BYTES);
-                                return counter.getCount();
-                            });
-
-            log.info("Registered sink metrics as gauges");
-        } catch (Exception e) {
-            log.warn("Failed to register sink metrics as gauges", e);
-        }
 
         return new FlinkSinkWriter(seatunnelWriter, context);
     }

@@ -19,11 +19,11 @@ package org.apache.seatunnel.translation.flink.metric;
 
 import org.apache.seatunnel.api.common.metrics.Counter;
 import org.apache.seatunnel.api.common.metrics.Meter;
-import org.apache.seatunnel.api.common.metrics.Metric;
+import org.apache.seatunnel.api.common.metrics.MetricNames;
 import org.apache.seatunnel.api.common.metrics.MetricsContext;
 import org.apache.seatunnel.api.common.metrics.Unit;
 
-import org.apache.flink.metrics.MeterView;
+import org.apache.flink.api.common.accumulators.LongCounter;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 
@@ -31,280 +31,309 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
+/** The implementation of MetricsContext for Flink 1.20. */
 @Slf4j
 public class FlinkMetricContext implements MetricsContext {
 
-    private final Map<String, Metric> metrics = new ConcurrentHashMap<>();
     private final MetricGroup metricGroup;
+    private final StreamingRuntimeContext runtimeContext;
+    private final Map<String, Counter> counters = new ConcurrentHashMap<>();
+    private final Map<String, Meter> meters = new ConcurrentHashMap<>();
+
+    public FlinkMetricContext(StreamingRuntimeContext runtimeContext) {
+        this.runtimeContext = runtimeContext;
+        this.metricGroup = runtimeContext != null ? runtimeContext.getMetricGroup() : null;
+        log.info(
+                "FlinkMetricContext initialized with runtimeContext: {}",
+                runtimeContext != null ? "valid" : "null");
+    }
 
     public FlinkMetricContext(MetricGroup metricGroup) {
         this.metricGroup = metricGroup;
-        log.info("FlinkMetricContext initialized with metricGroup: {}", metricGroup);
-    }
-
-    public FlinkMetricContext(StreamingRuntimeContext runtimeContext) {
-        this(runtimeContext != null ? runtimeContext.getMetricGroup() : null);
-        log.info("FlinkMetricContext initialized with StreamingRuntimeContext: {}", runtimeContext);
+        this.runtimeContext = null;
+        log.info(
+                "FlinkMetricContext initialized with metricGroup: {}",
+                metricGroup != null ? "valid" : "null");
     }
 
     @Override
     public Counter counter(String name) {
-        if (metrics.containsKey(name)) {
-            log.debug("Returning existing counter for: {}", name);
-            return (Counter) metrics.get(name);
+        Counter existingCounter = counters.get(name);
+        if (existingCounter != null) {
+            return existingCounter;
         }
 
         if (metricGroup == null) {
-            log.warn("MetricGroup is null, using NoOpCounter for: {}", name);
-            return this.counter(name, new NoOpCounter(name));
+            log.warn("MetricGroup is null, returning no-op counter for: {}", name);
+            Counter noOpCounter = new NoOpCounter();
+            counters.put(name, noOpCounter);
+            return noOpCounter;
         }
 
         try {
-            // 使用唯一前缀避免名称冲突
-            String uniqueName = "seatunnel_" + name;
+            org.apache.flink.metrics.Counter flinkCounter = metricGroup.counter(name);
 
-            // 检查是否是SinkWriterMetricGroup
-            if (name.equals("SinkWriteCount")
-                    && metricGroup.getClass().getName().contains("SinkWriterMetricGroup")) {
-                log.info("Using SinkWriterMetricGroup for SinkWriteCount");
+            // 对于关键指标，同时创建累加器
+            if (isKeyMetric(name) && runtimeContext != null) {
                 try {
-                    org.apache.flink.metrics.Counter counter = metricGroup.counter(uniqueName);
-                    log.info(
-                            "Created counter for SinkWriteCount: {} with Flink name: {}",
-                            name,
-                            uniqueName);
-                    return this.counter(name, new FlinkGroupCounter(name, counter));
+                    LongCounter accumulator = new LongCounter();
+                    runtimeContext.addAccumulator(name, accumulator);
+                    Counter counter = new FlinkAccumulatorCounter(flinkCounter, accumulator);
+                    counters.put(name, counter);
+                    log.info("Created counter with accumulator: {}", name);
+                    return counter;
                 } catch (Exception e) {
-                    log.warn("Failed to create SinkWriterMetricGroup counter: {}", name, e);
+                    log.warn(
+                            "Failed to create accumulator for: {}, falling back to simple counter",
+                            name,
+                            e);
                 }
             }
 
-            // 标准计数器创建
-            org.apache.flink.metrics.Counter counter = metricGroup.counter(uniqueName);
-            log.info("Created standard counter: {} with Flink name: {}", name, uniqueName);
-            return this.counter(name, new FlinkGroupCounter(name, counter));
+            // 创建普通计数器
+            Counter counter = new FlinkCounter(flinkCounter);
+            counters.put(name, counter);
+            log.debug("Created counter: {}", name);
+            return counter;
         } catch (Exception e) {
-            log.warn("Failed to create counter: {}", name, e);
-            return this.counter(name, new NoOpCounter(name));
+            log.warn("Failed to create counter: {}, returning no-op counter", name, e);
+            Counter noOpCounter = new NoOpCounter();
+            counters.put(name, noOpCounter);
+            return noOpCounter;
         }
     }
 
     @Override
     public <C extends Counter> C counter(String name, C counter) {
-        this.addMetric(name, counter);
-        return counter;
+        return null;
     }
 
     @Override
     public Meter meter(String name) {
-        if (metrics.containsKey(name)) {
-            log.debug("Returning existing meter for: {}", name);
-            return (Meter) metrics.get(name);
+        Meter existingMeter = meters.get(name);
+        if (existingMeter != null) {
+            return existingMeter;
         }
 
         if (metricGroup == null) {
-            log.warn("MetricGroup is null, using NoOpMeter for: {}", name);
-            return this.meter(name, new NoOpMeter(name));
+            log.warn("MetricGroup is null, returning no-op meter for: {}", name);
+            Meter noOpMeter = new NoOpMeter();
+            meters.put(name, noOpMeter);
+            return noOpMeter;
         }
 
         try {
-            // 使用唯一前缀避免名称冲突
-            String uniqueName = "seatunnel_" + name;
+            org.apache.flink.metrics.Meter flinkMeter =
+                    metricGroup.meter(name, new org.apache.flink.metrics.MeterView(60));
 
-            // 标准meter创建
-            org.apache.flink.metrics.Meter meter = metricGroup.meter(uniqueName, new MeterView(5));
-            log.info("Created standard meter: {} with Flink name: {}", name, uniqueName);
-            return this.meter(name, new FlinkMeter(name, meter));
+            Meter meter = new FlinkMeter(flinkMeter);
+            meters.put(name, meter);
+            log.debug("Created meter: {}", name);
+            return meter;
         } catch (Exception e) {
-            log.warn("Failed to create meter: {}", name, e);
-            return this.meter(name, new NoOpMeter(name));
+            log.warn("Failed to create meter: {}, returning no-op meter", name, e);
+            Meter noOpMeter = new NoOpMeter();
+            meters.put(name, noOpMeter);
+            return noOpMeter;
         }
     }
 
     @Override
     public <M extends Meter> M meter(String name, M meter) {
-        this.addMetric(name, meter);
-        return meter;
+        return null;
     }
 
-    protected void addMetric(String name, Metric metric) {
-        if (metric == null) {
-            log.warn("Ignoring attempted add of a metric due to being null for name {}.", name);
-        } else {
-            synchronized (this) {
-                Metric prior = this.metrics.put(name, metric);
-                if (prior != null) {
-                    this.metrics.put(name, prior);
-                    log.warn(
-                            "Name collision: MetricsContext already contains a Metric with the name '"
-                                    + name
-                                    + "'. Metric will not be reported.");
-                }
-            }
-        }
+    /** 判断是否是关键指标 */
+    private boolean isKeyMetric(String name) {
+        return name.equals(MetricNames.SOURCE_RECEIVED_COUNT)
+                || name.equals(MetricNames.SOURCE_RECEIVED_BYTES)
+                || name.equals(MetricNames.SINK_WRITE_COUNT)
+                || name.equals(MetricNames.SINK_WRITE_BYTES);
     }
 
-    // Flink计数器实现
-    private static class FlinkGroupCounter implements Counter {
-        private final String name;
-        private final org.apache.flink.metrics.Counter counter;
+    /** Flink 计数器实现 */
+    private static class FlinkCounter implements Counter {
+        private final org.apache.flink.metrics.Counter flinkCounter;
 
-        public FlinkGroupCounter(String name, org.apache.flink.metrics.Counter counter) {
-            this.name = name;
-            this.counter = counter;
+        FlinkCounter(org.apache.flink.metrics.Counter flinkCounter) {
+            this.flinkCounter = flinkCounter;
         }
 
         @Override
         public void inc() {
-            counter.inc();
+            flinkCounter.inc();
         }
 
         @Override
         public void inc(long n) {
-            counter.inc(n);
+            flinkCounter.inc(n);
         }
 
         @Override
-        public void dec() {
-            counter.dec();
-        }
+        public void dec() {}
 
         @Override
-        public void dec(long n) {
-            counter.dec(n);
-        }
+        public void dec(long n) {}
 
         @Override
-        public void set(long n) {
-            // Flink Counter没有set方法，我们可以通过重置和增加来模拟
-            counter.inc(n - getCount());
-        }
+        public void set(long n) {}
 
         @Override
         public long getCount() {
-            return counter.getCount();
+            return flinkCounter.getCount();
         }
 
         @Override
         public String name() {
-            return name;
+            return "";
         }
 
         @Override
         public Unit unit() {
-            return Unit.COUNT;
+            return null;
         }
     }
 
-    // Flink计量器实现
-    private static class FlinkMeter implements Meter {
-        private final String name;
-        private final org.apache.flink.metrics.Meter meter;
+    /** 同时更新计数器和累加器的计数器实现 */
+    private static class FlinkAccumulatorCounter implements Counter {
+        private final org.apache.flink.metrics.Counter flinkCounter;
+        private final LongCounter accumulator;
 
-        public FlinkMeter(String name, org.apache.flink.metrics.Meter meter) {
-            this.name = name;
-            this.meter = meter;
+        FlinkAccumulatorCounter(
+                org.apache.flink.metrics.Counter flinkCounter, LongCounter accumulator) {
+            this.flinkCounter = flinkCounter;
+            this.accumulator = accumulator;
+        }
+
+        @Override
+        public void inc() {
+            flinkCounter.inc();
+            accumulator.add(1L);
+        }
+
+        @Override
+        public void inc(long n) {
+            flinkCounter.inc(n);
+            accumulator.add(n);
+        }
+
+        @Override
+        public void dec() {}
+
+        @Override
+        public void dec(long n) {}
+
+        @Override
+        public void set(long n) {}
+
+        @Override
+        public long getCount() {
+            return flinkCounter.getCount();
+        }
+
+        @Override
+        public String name() {
+            return "";
+        }
+
+        @Override
+        public Unit unit() {
+            return null;
+        }
+    }
+
+    /** 无操作的计数器实现 */
+    private static class NoOpCounter implements Counter {
+        private final AtomicLong count = new AtomicLong(0);
+
+        @Override
+        public void inc() {
+            count.incrementAndGet();
+        }
+
+        @Override
+        public void inc(long n) {
+            count.addAndGet(n);
+        }
+
+        @Override
+        public void dec() {}
+
+        @Override
+        public void dec(long n) {}
+
+        @Override
+        public void set(long n) {}
+
+        @Override
+        public long getCount() {
+            return count.get();
+        }
+
+        @Override
+        public String name() {
+            return "";
+        }
+
+        @Override
+        public Unit unit() {
+            return null;
+        }
+    }
+
+    /** Flink 计量器实现 */
+    private static class FlinkMeter implements Meter {
+        private final org.apache.flink.metrics.Meter flinkMeter;
+
+        FlinkMeter(org.apache.flink.metrics.Meter flinkMeter) {
+            this.flinkMeter = flinkMeter;
         }
 
         @Override
         public void markEvent() {
-            meter.markEvent();
+            flinkMeter.markEvent();
         }
 
         @Override
         public void markEvent(long n) {
-            meter.markEvent(n);
+            flinkMeter.markEvent(n);
         }
 
         @Override
         public double getRate() {
-            return meter.getRate();
+            return flinkMeter.getRate();
         }
 
         @Override
         public long getCount() {
-            return meter.getCount();
+            return 0;
         }
 
         @Override
         public String name() {
-            return name;
+            return "";
         }
 
         @Override
         public Unit unit() {
-            return Unit.COUNT;
+            return null;
         }
     }
 
-    // 空操作计数器实现
-    private static class NoOpCounter implements Counter {
-        private final String name;
-        private long count = 0;
-
-        public NoOpCounter(String name) {
-            this.name = name;
-        }
-
-        @Override
-        public void inc() {
-            count++;
-        }
-
-        @Override
-        public void inc(long n) {
-            count += n;
-        }
-
-        @Override
-        public void dec() {
-            count--;
-        }
-
-        @Override
-        public void dec(long n) {
-            count -= n;
-        }
-
-        @Override
-        public void set(long n) {
-            count = n;
-        }
-
-        @Override
-        public long getCount() {
-            return count;
-        }
-
-        @Override
-        public String name() {
-            return name;
-        }
-
-        @Override
-        public Unit unit() {
-            return Unit.COUNT;
-        }
-    }
-
-    // 空操作计量器实现
+    /** 无操作的计量器实现 */
     private static class NoOpMeter implements Meter {
-        private final String name;
-        private long count = 0;
-
-        public NoOpMeter(String name) {
-            this.name = name;
-        }
+        private final AtomicLong count = new AtomicLong(0);
 
         @Override
         public void markEvent() {
-            count++;
+            count.incrementAndGet();
         }
 
         @Override
         public void markEvent(long n) {
-            count += n;
+            count.addAndGet(n);
         }
 
         @Override
@@ -314,17 +343,17 @@ public class FlinkMetricContext implements MetricsContext {
 
         @Override
         public long getCount() {
-            return count;
+            return 0;
         }
 
         @Override
         public String name() {
-            return name;
+            return "";
         }
 
         @Override
         public Unit unit() {
-            return Unit.COUNT;
+            return null;
         }
     }
 }
