@@ -56,6 +56,7 @@ public class FlinkSink implements Sink<SeaTunnelRow> {
         org.apache.seatunnel.api.sink.SinkWriter<SeaTunnelRow, ?, ?> seatunnelWriter =
                 seaTunnelSink.createWriter(writerContext);
 
-        return new FlinkSinkWriter(seatunnelWriter, context);
+        // 传递context和MetricsContext给FlinkSinkWriter
+        return new FlinkSinkWriter(seatunnelWriter, context, writerContext.getMetricsContext());
     }
 }
