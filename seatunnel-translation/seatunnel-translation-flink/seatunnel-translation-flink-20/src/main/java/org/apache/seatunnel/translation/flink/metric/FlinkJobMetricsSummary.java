@@ -20,17 +20,19 @@ package org.apache.seatunnel.translation.flink.metric;
 import org.apache.seatunnel.api.common.metrics.MetricNames;
 import org.apache.seatunnel.common.utils.DateTimeUtils;
 import org.apache.seatunnel.common.utils.StringFormatUtils;
+import org.apache.seatunnel.translation.flink.sink.FlinkSinkWriter;
 
 import org.apache.flink.api.common.JobExecutionResult;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.stream.Collectors;
 
 /** Flink 1.20 专用的作业指标摘要类。 处理 Flink 1.20 中的 Accumulator 结果，并处理 null 值。 */
 @Slf4j
@@ -176,101 +178,548 @@ public class FlinkJobMetricsSummary {
      * @return 指标映射
      */
     public Map<String, Object> getMetrics() {
-        System.out.println("FLINK-20-MODULE: getMetrics() called");
-        log.info("FLINK-20-MODULE: getMetrics() called");
         Map<String, Object> metrics = new HashMap<>();
-
-        // 从累加器结果中获取指标
-        Map<String, Object> accumulatorResults = jobExecutionResult.getAllAccumulatorResults();
-        System.out.println("FLINK-20-MODULE: Accumulator results: " + accumulatorResults);
-        log.info("FLINK-20-MODULE: Accumulator results: {}", accumulatorResults);
-        metrics.putAll(accumulatorResults);
 
         // 获取作业ID
         String jobId = jobExecutionResult.getJobID().toString();
-        System.out.println("FLINK-20-MODULE: Getting metrics for job ID: " + jobId);
-        log.info("FLINK-20-MODULE: Getting metrics for job ID: {}", jobId);
+        System.out.println("FLINK-20-MODULE Getting metrics for job ID: " + jobId);
+        log.info("FLINK-20-MODULE Getting metrics for job ID: {}", jobId);
 
-        // 列出所有系统属性，用于调试
-        Properties props = System.getProperties();
-        System.out.println(
-                "FLINK-20-MODULE: Available system properties (first 20): "
-                        + props.stringPropertyNames().stream()
-                                .limit(20)
-                                .collect(Collectors.toList()));
-        log.info(
-                "FLINK-20-MODULE: Available system properties (first 20): {}",
-                props.stringPropertyNames().stream().limit(20).collect(Collectors.toList()));
+        // 记录初始状态
+        System.out.println("FLINK-20-MODULE Initial metrics map is empty");
+        log.info("FLINK-20-MODULE Initial metrics map is empty");
 
-        // 从系统属性中获取指标
-        String prefix = "seatunnel.metric." + jobId + ".";
-        System.out.println("FLINK-20-MODULE: Looking for system properties with prefix: " + prefix);
-        log.info("FLINK-20-MODULE: Looking for system properties with prefix: {}", prefix);
-
-        // 打印所有包含seatunnel的系统属性，用于调试
-        System.out.println("FLINK-20-MODULE: All seatunnel-related system properties:");
-        props.stringPropertyNames().stream()
-                .filter(name -> name.toLowerCase().contains("seatunnel"))
-                .forEach(
-                        name -> {
-                            System.out.println("  " + name + " = " + System.getProperty(name));
-                            log.info(
-                                    "FLINK-20-MODULE: Found seatunnel property: {} = {}",
-                                    name,
-                                    System.getProperty(name));
-                        });
-
-        // 尝试从累加器中直接获取Sink指标
-        if (!metrics.containsKey(MetricNames.SINK_WRITE_COUNT)
-                && metrics.containsKey(MetricNames.SOURCE_RECEIVED_COUNT)) {
+        // 1. 尝试从Flink的指标系统中获取指标 - 使用MetricsRegistry
+        try {
             System.out.println(
-                    "FLINK-20-MODULE: No sink metrics found, using source metrics as fallback");
-            log.info("FLINK-20-MODULE: No sink metrics found, using source metrics as fallback");
+                    "FLINK-20-MODULE Step 1: Attempting to get metrics from MetricsRegistry");
+            log.info("FLINK-20-MODULE Step 1: Attempting to get metrics from MetricsRegistry");
 
-            // 使用Source指标作为Sink指标的备选
-            Object sourceCount = metrics.get(MetricNames.SOURCE_RECEIVED_COUNT);
-            Object sourceBytes = metrics.get(MetricNames.SOURCE_RECEIVED_BYTES);
+            // 从MetricsRegistry获取聚合指标
+            Map<String, Long> aggregatedMetrics =
+                    FlinkMetricsRegistry.getAggregatedJobMetrics(jobId);
 
-            if (sourceCount != null) {
-                metrics.put(MetricNames.SINK_WRITE_COUNT, sourceCount);
+            System.out.println("FLINK-20-MODULE MetricsRegistry returned: " + aggregatedMetrics);
+            log.info("FLINK-20-MODULE MetricsRegistry returned: {}", aggregatedMetrics);
+
+            // 检查是否包含我们需要的指标
+            if (aggregatedMetrics.containsKey(MetricNames.SINK_WRITE_COUNT)) {
+                long writeCount = aggregatedMetrics.get(MetricNames.SINK_WRITE_COUNT);
+                metrics.put(MetricNames.SINK_WRITE_COUNT, writeCount);
                 System.out.println(
-                        "FLINK-20-MODULE: Using source count as sink count: " + sourceCount);
-                log.info("FLINK-20-MODULE: Using source count as sink count: {}", sourceCount);
+                        "FLINK-20-MODULE Found sink count in MetricsRegistry: " + writeCount);
+                log.info("FLINK-20-MODULE Found sink count in MetricsRegistry: {}", writeCount);
+            } else {
+                System.out.println("FLINK-20-MODULE No sink count found in MetricsRegistry");
+                log.info("FLINK-20-MODULE No sink count found in MetricsRegistry");
             }
 
-            if (sourceBytes != null) {
-                metrics.put(MetricNames.SINK_WRITE_BYTES, sourceBytes);
+            if (aggregatedMetrics.containsKey(MetricNames.SINK_WRITE_BYTES)) {
+                long writeBytes = aggregatedMetrics.get(MetricNames.SINK_WRITE_BYTES);
+                metrics.put(MetricNames.SINK_WRITE_BYTES, writeBytes);
                 System.out.println(
-                        "FLINK-20-MODULE: Using source bytes as sink bytes: " + sourceBytes);
-                log.info("FLINK-20-MODULE: Using source bytes as sink bytes: {}", sourceBytes);
+                        "FLINK-20-MODULE Found sink bytes in MetricsRegistry: " + writeBytes);
+                log.info("FLINK-20-MODULE Found sink bytes in MetricsRegistry: {}", writeBytes);
+            } else {
+                System.out.println("FLINK-20-MODULE No sink bytes found in MetricsRegistry");
+                log.info("FLINK-20-MODULE No sink bytes found in MetricsRegistry");
             }
+
+            // 如果MetricsRegistry中没有找到指标，尝试从Flink的内置指标获取
+            if (!metrics.containsKey(MetricNames.SINK_WRITE_COUNT)
+                    || !metrics.containsKey(MetricNames.SINK_WRITE_BYTES)) {
+
+                System.out.println(
+                        "FLINK-20-MODULE Metrics not complete from MetricsRegistry, trying Flink accumulators");
+                log.info(
+                        "FLINK-20-MODULE Metrics not complete from MetricsRegistry, trying Flink accumulators");
+
+                // 尝试从Flink的累加器结果中获取
+                Map<String, Object> accumulatorResults =
+                        jobExecutionResult.getAllAccumulatorResults();
+
+                System.out.println(
+                        "FLINK-20-MODULE Available accumulators: " + accumulatorResults.keySet());
+                log.info("FLINK-20-MODULE Available accumulators: {}", accumulatorResults.keySet());
+
+                for (Map.Entry<String, Object> entry : accumulatorResults.entrySet()) {
+                    String key = entry.getKey();
+                    Object value = entry.getValue();
+
+                    System.out.println(
+                            "FLINK-20-MODULE Checking accumulator: " + key + " = " + value);
+                    log.info("FLINK-20-MODULE Checking accumulator: {} = {}", key, value);
+
+                    if (key.equalsIgnoreCase(MetricNames.SINK_WRITE_COUNT)
+                            || key.equalsIgnoreCase("numRecordsOut")
+                            || key.equalsIgnoreCase("numRecordsSend")) {
+
+                        if (value instanceof Number) {
+                            long longValue = ((Number) value).longValue();
+                            metrics.put(MetricNames.SINK_WRITE_COUNT, longValue);
+
+                            System.out.println(
+                                    "FLINK-20-MODULE Using accumulator '"
+                                            + key
+                                            + "' as sink count: "
+                                            + longValue);
+                            log.info(
+                                    "FLINK-20-MODULE Using accumulator '{}' as sink count: {}",
+                                    key,
+                                    longValue);
+                        }
+                    } else if (key.equalsIgnoreCase(MetricNames.SINK_WRITE_BYTES)
+                            || key.equalsIgnoreCase("numBytesOut")) {
+
+                        if (value instanceof Number) {
+                            long longValue = ((Number) value).longValue();
+                            metrics.put(MetricNames.SINK_WRITE_BYTES, longValue);
+
+                            System.out.println(
+                                    "FLINK-20-MODULE Using accumulator '"
+                                            + key
+                                            + "' as sink bytes: "
+                                            + longValue);
+                            log.info(
+                                    "FLINK-20-MODULE Using accumulator '{}' as sink bytes: {}",
+                                    key,
+                                    longValue);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.println(
+                    "FLINK-20-MODULE Failed to get metrics from MetricsRegistry: "
+                            + e.getMessage());
+            log.warn(
+                    "FLINK-20-MODULE Failed to get metrics from MetricsRegistry: {}",
+                    e.getMessage(),
+                    e);
         }
 
-        for (String propName : props.stringPropertyNames()) {
-            if (propName.startsWith(prefix)) {
-                String metricName = propName.substring(propName.lastIndexOf('.') + 1);
-                String value = System.getProperty(propName);
-                System.out.println(
-                        "FLINK-20-MODULE: Found metric in system properties: "
-                                + metricName
-                                + " = "
-                                + value);
-                log.info(
-                        "FLINK-20-MODULE: Found metric in system properties: {} = {}",
-                        metricName,
-                        value);
+        // 2. 尝试从系统属性中获取指标
+        try {
+            System.out.println("FLINK-20-MODULE Step 2: Checking system properties");
+            log.info("FLINK-20-MODULE Step 2: Checking system properties");
 
+            // 尝试从全局系统属性中获取指标
+            String globalWriteCount =
+                    System.getProperty("seatunnel.global." + MetricNames.SINK_WRITE_COUNT);
+            String globalWriteBytes =
+                    System.getProperty("seatunnel.global." + MetricNames.SINK_WRITE_BYTES);
+
+            System.out.println(
+                    "FLINK-20-MODULE System property for sink count: " + globalWriteCount);
+            System.out.println(
+                    "FLINK-20-MODULE System property for sink bytes: " + globalWriteBytes);
+            log.info("FLINK-20-MODULE System property for sink count: {}", globalWriteCount);
+            log.info("FLINK-20-MODULE System property for sink bytes: {}", globalWriteBytes);
+
+            if (globalWriteCount != null) {
                 try {
-                    long longValue = Long.parseLong(value);
-                    metrics.put(metricName, longValue);
+                    long value = Long.parseLong(globalWriteCount);
+                    metrics.put(MetricNames.SINK_WRITE_COUNT, value);
+                    System.out.println(
+                            "FLINK-20-MODULE Using global property for sink count: " + value);
+                    log.info("FLINK-20-MODULE Using global property for sink count: {}", value);
                 } catch (NumberFormatException e) {
-                    metrics.put(metricName, value);
+                    System.out.println(
+                            "FLINK-20-MODULE Failed to parse global sink count: "
+                                    + globalWriteCount);
+                    log.warn(
+                            "FLINK-20-MODULE Failed to parse global sink count: {}",
+                            globalWriteCount);
+                }
+            }
+
+            if (globalWriteBytes != null) {
+                try {
+                    long value = Long.parseLong(globalWriteBytes);
+                    metrics.put(MetricNames.SINK_WRITE_BYTES, value);
+                    System.out.println(
+                            "FLINK-20-MODULE Using global property for sink bytes: " + value);
+                    log.info("FLINK-20-MODULE Using global property for sink bytes: {}", value);
+                } catch (NumberFormatException e) {
+                    System.out.println(
+                            "FLINK-20-MODULE Failed to parse global sink bytes: "
+                                    + globalWriteBytes);
+                    log.warn(
+                            "FLINK-20-MODULE Failed to parse global sink bytes: {}",
+                            globalWriteBytes);
+                }
+            }
+        } catch (Exception e) {
+            System.out.println(
+                    "FLINK-20-MODULE Failed to get metrics from system properties: "
+                            + e.getMessage());
+            log.warn(
+                    "FLINK-20-MODULE Failed to get metrics from system properties: {}",
+                    e.getMessage(),
+                    e);
+        }
+
+        // 3. 尝试从文件中获取指标
+        try {
+            System.out.println("FLINK-20-MODULE Step 3: Checking metrics files");
+            log.info("FLINK-20-MODULE Step 3: Checking metrics files");
+
+            String tmpDir = System.getProperty("java.io.tmpdir", "/tmp");
+            File tmpDirectory = new File(tmpDir);
+            File[] metricsFiles =
+                    tmpDirectory.listFiles(
+                            (dir, name) -> name.startsWith("seatunnel_metrics_" + jobId));
+
+            if (metricsFiles != null) {
+                System.out.println(
+                        "FLINK-20-MODULE Found " + metricsFiles.length + " metrics files");
+                log.info("FLINK-20-MODULE Found {} metrics files", metricsFiles.length);
+
+                if (metricsFiles.length > 0) {
+                    long totalWriteCount = 0;
+                    long totalWriteBytes = 0;
+
+                    for (File file : metricsFiles) {
+                        System.out.println("FLINK-20-MODULE Processing file: " + file.getName());
+                        log.info("FLINK-20-MODULE Processing file: {}", file.getName());
+
+                        try {
+                            Properties props = new Properties();
+                            try (FileInputStream fis = new FileInputStream(file)) {
+                                props.load(fis);
+
+                                String writeCountStr =
+                                        props.getProperty(MetricNames.SINK_WRITE_COUNT);
+                                String writeBytesStr =
+                                        props.getProperty(MetricNames.SINK_WRITE_BYTES);
+
+                                System.out.println(
+                                        "FLINK-20-MODULE File contains sink count: "
+                                                + writeCountStr);
+                                System.out.println(
+                                        "FLINK-20-MODULE File contains sink bytes: "
+                                                + writeBytesStr);
+                                log.info(
+                                        "FLINK-20-MODULE File contains sink count: {}",
+                                        writeCountStr);
+                                log.info(
+                                        "FLINK-20-MODULE File contains sink bytes: {}",
+                                        writeBytesStr);
+
+                                if (writeCountStr != null) {
+                                    long writeCount = Long.parseLong(writeCountStr);
+                                    totalWriteCount += writeCount;
+                                    System.out.println(
+                                            "FLINK-20-MODULE Added write count from file: +"
+                                                    + writeCount);
+                                    log.info(
+                                            "FLINK-20-MODULE Added write count from file: +{}",
+                                            writeCount);
+                                }
+
+                                if (writeBytesStr != null) {
+                                    long writeBytes = Long.parseLong(writeBytesStr);
+                                    totalWriteBytes += writeBytes;
+                                    System.out.println(
+                                            "FLINK-20-MODULE Added write bytes from file: +"
+                                                    + writeBytes);
+                                    log.info(
+                                            "FLINK-20-MODULE Added write bytes from file: +{}",
+                                            writeBytes);
+                                }
+                            }
+                        } catch (Exception e) {
+                            System.out.println(
+                                    "FLINK-20-MODULE Failed to read metrics from file: "
+                                            + e.getMessage());
+                            log.warn(
+                                    "FLINK-20-MODULE Failed to read metrics from file: {}",
+                                    e.getMessage(),
+                                    e);
+                        }
+                    }
+
+                    // 只有在找到有效指标时才更新
+                    if (totalWriteCount > 0) {
+                        metrics.put(MetricNames.SINK_WRITE_COUNT, totalWriteCount);
+                        System.out.println(
+                                "FLINK-20-MODULE Using file-based metrics for sink count: "
+                                        + totalWriteCount);
+                        log.info(
+                                "FLINK-20-MODULE Using file-based metrics for sink count: {}",
+                                totalWriteCount);
+                    }
+
+                    if (totalWriteBytes > 0) {
+                        metrics.put(MetricNames.SINK_WRITE_BYTES, totalWriteBytes);
+                        System.out.println(
+                                "FLINK-20-MODULE Using file-based metrics for sink bytes: "
+                                        + totalWriteBytes);
+                        log.info(
+                                "FLINK-20-MODULE Using file-based metrics for sink bytes: {}",
+                                totalWriteBytes);
+                    }
+                } else {
+                    System.out.println(
+                            "FLINK-20-MODULE No metrics files found for job ID: " + jobId);
+                    log.info("FLINK-20-MODULE No metrics files found for job ID: {}", jobId);
+                }
+            }
+        } catch (Exception e) {
+            System.out.println(
+                    "FLINK-20-MODULE Failed to get metrics from files: " + e.getMessage());
+            log.warn("FLINK-20-MODULE Failed to get metrics from files: {}", e.getMessage(), e);
+        }
+
+        // 4. 尝试从静态全局计数器中获取指标
+        try {
+            System.out.println("FLINK-20-MODULE Step 4: Checking global counters");
+            log.info("FLINK-20-MODULE Step 4: Checking global counters");
+
+            // 获取所有与当前作业相关的计数器
+            Map<String, Long> jobCounters = new HashMap<>();
+            for (Map.Entry<String, Long> entry : FlinkSinkWriter.GLOBAL_COUNTERS.entrySet()) {
+                if (entry.getKey().startsWith(jobId)) {
+                    jobCounters.put(entry.getKey(), entry.getValue());
+                }
+            }
+
+            System.out.println(
+                    "FLINK-20-MODULE Found "
+                            + jobCounters.size()
+                            + " global counters for job ID: "
+                            + jobId);
+            System.out.println("FLINK-20-MODULE Global counters: " + jobCounters);
+            log.info(
+                    "FLINK-20-MODULE Found {} global counters for job ID: {}",
+                    jobCounters.size(),
+                    jobId);
+            log.info("FLINK-20-MODULE Global counters: {}", jobCounters);
+
+            if (!jobCounters.isEmpty()) {
+                // 查找总计数器
+                String totalWriteCountKey = jobId + "_" + MetricNames.SINK_WRITE_COUNT;
+                String totalWriteBytesKey = jobId + "_" + MetricNames.SINK_WRITE_BYTES;
+
+                System.out.println(
+                        "FLINK-20-MODULE Looking for total counter keys: "
+                                + totalWriteCountKey
+                                + ", "
+                                + totalWriteBytesKey);
+                log.info(
+                        "FLINK-20-MODULE Looking for total counter keys: {}, {}",
+                        totalWriteCountKey,
+                        totalWriteBytesKey);
+
+                if (jobCounters.containsKey(totalWriteCountKey)) {
+                    long totalWriteCount = jobCounters.get(totalWriteCountKey);
+                    metrics.put(MetricNames.SINK_WRITE_COUNT, totalWriteCount);
+                    System.out.println(
+                            "FLINK-20-MODULE Using global counter for sink count: "
+                                    + totalWriteCount);
+                    log.info(
+                            "FLINK-20-MODULE Using global counter for sink count: {}",
+                            totalWriteCount);
+                }
+
+                if (jobCounters.containsKey(totalWriteBytesKey)) {
+                    long totalWriteBytes = jobCounters.get(totalWriteBytesKey);
+                    metrics.put(MetricNames.SINK_WRITE_BYTES, totalWriteBytes);
+                    System.out.println(
+                            "FLINK-20-MODULE Using global counter for sink bytes: "
+                                    + totalWriteBytes);
+                    log.info(
+                            "FLINK-20-MODULE Using global counter for sink bytes: {}",
+                            totalWriteBytes);
+                }
+
+                // 如果没有找到总计数器，则手动计算
+                if (!metrics.containsKey(MetricNames.SINK_WRITE_COUNT)
+                        || !metrics.containsKey(MetricNames.SINK_WRITE_BYTES)) {
+
+                    System.out.println(
+                            "FLINK-20-MODULE No total counters found, calculating from subtask counters");
+                    log.info(
+                            "FLINK-20-MODULE No total counters found, calculating from subtask counters");
+
+                    long totalWriteCount = 0;
+                    long totalWriteBytes = 0;
+
+                    for (Map.Entry<String, Long> entry : jobCounters.entrySet()) {
+                        if (entry.getKey().contains("_" + MetricNames.SINK_WRITE_COUNT)
+                                && !entry.getKey().equals(totalWriteCountKey)) {
+                            totalWriteCount += entry.getValue();
+                            System.out.println(
+                                    "FLINK-20-MODULE Adding to write count: "
+                                            + entry.getKey()
+                                            + " = "
+                                            + entry.getValue());
+                            log.info(
+                                    "FLINK-20-MODULE Adding to write count: {} = {}",
+                                    entry.getKey(),
+                                    entry.getValue());
+                        } else if (entry.getKey().contains("_" + MetricNames.SINK_WRITE_BYTES)
+                                && !entry.getKey().equals(totalWriteBytesKey)) {
+                            totalWriteBytes += entry.getValue();
+                            System.out.println(
+                                    "FLINK-20-MODULE Adding to write bytes: "
+                                            + entry.getKey()
+                                            + " = "
+                                            + entry.getValue());
+                            log.info(
+                                    "FLINK-20-MODULE Adding to write bytes: {} = {}",
+                                    entry.getKey(),
+                                    entry.getValue());
+                        }
+                    }
+
+                    if (totalWriteCount > 0 && !metrics.containsKey(MetricNames.SINK_WRITE_COUNT)) {
+                        metrics.put(MetricNames.SINK_WRITE_COUNT, totalWriteCount);
+                        System.out.println(
+                                "FLINK-20-MODULE Calculated total sink count from subtask counters: "
+                                        + totalWriteCount);
+                        log.info(
+                                "FLINK-20-MODULE Calculated total sink count from subtask counters: {}",
+                                totalWriteCount);
+                    }
+
+                    if (totalWriteBytes > 0 && !metrics.containsKey(MetricNames.SINK_WRITE_BYTES)) {
+                        metrics.put(MetricNames.SINK_WRITE_BYTES, totalWriteBytes);
+                        System.out.println(
+                                "FLINK-20-MODULE Calculated total sink bytes from subtask counters: "
+                                        + totalWriteBytes);
+                        log.info(
+                                "FLINK-20-MODULE Calculated total sink bytes from subtask counters: {}",
+                                totalWriteBytes);
+                    }
+                }
+            } else {
+                System.out.println("FLINK-20-MODULE No global counters found for job ID: " + jobId);
+                log.info("FLINK-20-MODULE No global counters found for job ID: {}", jobId);
+            }
+        } catch (Exception e) {
+            System.out.println(
+                    "FLINK-20-MODULE Failed to get metrics from global counters: "
+                            + e.getMessage());
+            log.warn(
+                    "FLINK-20-MODULE Failed to get metrics from global counters: {}",
+                    e.getMessage(),
+                    e);
+        }
+
+        // 5. 如果仍然没有找到Sink指标，使用Source指标作为备选
+        if (!metrics.containsKey(MetricNames.SINK_WRITE_COUNT)
+                || !metrics.containsKey(MetricNames.SINK_WRITE_BYTES)) {
+
+            System.out.println(
+                    "FLINK-20-MODULE Step 5: Still missing metrics, trying source metrics as fallback");
+            log.info(
+                    "FLINK-20-MODULE Step 5: Still missing metrics, trying source metrics as fallback");
+
+            // 尝试从累加器结果中获取Source指标
+            Map<String, Object> accumulatorResults = jobExecutionResult.getAllAccumulatorResults();
+
+            for (Map.Entry<String, Object> entry : accumulatorResults.entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+
+                System.out.println(
+                        "FLINK-20-MODULE Checking source accumulator: " + key + " = " + value);
+                log.info("FLINK-20-MODULE Checking source accumulator: {} = {}", key, value);
+
+                if (key.equalsIgnoreCase(MetricNames.SOURCE_RECEIVED_COUNT)
+                        || key.equalsIgnoreCase("SourceReceivedCount")
+                        || key.equalsIgnoreCase("numRecordsIn")) {
+                    if (!metrics.containsKey(MetricNames.SINK_WRITE_COUNT)) {
+                        metrics.put(MetricNames.SINK_WRITE_COUNT, value);
+                        System.out.println(
+                                "FLINK-20-MODULE Using source count as sink count: " + value);
+                        log.info("FLINK-20-MODULE Using source count as sink count: {}", value);
+                    }
+                } else if (key.equalsIgnoreCase(MetricNames.SOURCE_RECEIVED_BYTES)
+                        || key.equalsIgnoreCase("SourceReceivedBytes")
+                        || key.equalsIgnoreCase("numBytesIn")) {
+                    if (!metrics.containsKey(MetricNames.SINK_WRITE_BYTES)) {
+                        metrics.put(MetricNames.SINK_WRITE_BYTES, value);
+                        System.out.println(
+                                "FLINK-20-MODULE Using source bytes as sink bytes: " + value);
+                        log.info("FLINK-20-MODULE Using source bytes as sink bytes: {}", value);
+                    }
                 }
             }
         }
 
-        System.out.println("FLINK-20-MODULE: Collected metrics: " + metrics);
-        log.info("FLINK-20-MODULE: Collected metrics: {}", metrics);
+        // 添加source指标到metrics映射中
+        try {
+            System.out.println("FLINK-20-MODULE Adding source metrics to the metrics map");
+            log.info("FLINK-20-MODULE Adding source metrics to the metrics map");
+
+            Map<String, Object> accumulatorResults = jobExecutionResult.getAllAccumulatorResults();
+
+            // 直接从累加器中获取source指标
+            if (accumulatorResults.containsKey(MetricNames.SOURCE_RECEIVED_COUNT)) {
+                Object sourceCount = accumulatorResults.get(MetricNames.SOURCE_RECEIVED_COUNT);
+                metrics.put(MetricNames.SOURCE_RECEIVED_COUNT, sourceCount);
+                System.out.println(
+                        "FLINK-20-MODULE Added source count from accumulator: " + sourceCount);
+                log.info("FLINK-20-MODULE Added source count from accumulator: {}", sourceCount);
+            } else {
+                // 尝试从其他累加器中查找source指标
+                for (Map.Entry<String, Object> entry : accumulatorResults.entrySet()) {
+                    String key = entry.getKey();
+                    Object value = entry.getValue();
+
+                    if (key.equalsIgnoreCase("numRecordsIn")
+                            || key.equalsIgnoreCase("recordsRead")) {
+                        metrics.put(MetricNames.SOURCE_RECEIVED_COUNT, value);
+                        System.out.println(
+                                "FLINK-20-MODULE Added source count from alternative accumulator '"
+                                        + key
+                                        + "': "
+                                        + value);
+                        log.info(
+                                "FLINK-20-MODULE Added source count from alternative accumulator '{}': {}",
+                                key,
+                                value);
+                        break;
+                    }
+                }
+            }
+
+            if (accumulatorResults.containsKey(MetricNames.SOURCE_RECEIVED_BYTES)) {
+                Object sourceBytes = accumulatorResults.get(MetricNames.SOURCE_RECEIVED_BYTES);
+                metrics.put(MetricNames.SOURCE_RECEIVED_BYTES, sourceBytes);
+                System.out.println(
+                        "FLINK-20-MODULE Added source bytes from accumulator: " + sourceBytes);
+                log.info("FLINK-20-MODULE Added source bytes from accumulator: {}", sourceBytes);
+            } else {
+                // 尝试从其他累加器中查找source字节指标
+                for (Map.Entry<String, Object> entry : accumulatorResults.entrySet()) {
+                    String key = entry.getKey();
+                    Object value = entry.getValue();
+
+                    if (key.equalsIgnoreCase("numBytesIn") || key.equalsIgnoreCase("bytesRead")) {
+                        metrics.put(MetricNames.SOURCE_RECEIVED_BYTES, value);
+                        System.out.println(
+                                "FLINK-20-MODULE Added source bytes from alternative accumulator '"
+                                        + key
+                                        + "': "
+                                        + value);
+                        log.info(
+                                "FLINK-20-MODULE Added source bytes from alternative accumulator '{}': {}",
+                                key,
+                                value);
+                        break;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("FLINK-20-MODULE Failed to add source metrics: " + e.getMessage());
+            log.warn("FLINK-20-MODULE Failed to add source metrics: {}", e.getMessage(), e);
+        }
+
+        System.out.println("FLINK-20-MODULE Final collected metrics: " + metrics);
+        log.info("FLINK-20-MODULE Final collected metrics: {}", metrics);
         return metrics;
     }
 
@@ -284,25 +733,17 @@ public class FlinkJobMetricsSummary {
         log.info("FLINK-20-MODULE: Available metrics: {}", metrics.keySet());
 
         // 获取指标值
-        long sourceReceivedCount = getCounterValue(metrics, MetricNames.SOURCE_RECEIVED_COUNT, 0L);
         long sinkWriteCount = getCounterValue(metrics, MetricNames.SINK_WRITE_COUNT, 0L);
-        long sourceReceivedBytes = getCounterValue(metrics, MetricNames.SOURCE_RECEIVED_BYTES, 0L);
         long sinkWriteBytes = getCounterValue(metrics, MetricNames.SINK_WRITE_BYTES, 0L);
 
         System.out.println(
-                "FLINK-20-MODULE: Metrics values - sourceReceivedCount: "
-                        + sourceReceivedCount
-                        + ", sinkWriteCount: "
+                "FLINK-20-MODULE: Metrics values - sinkWriteCount : "
                         + sinkWriteCount
-                        + ", sourceReceivedBytes: "
-                        + sourceReceivedBytes
                         + ", sinkWriteBytes: "
                         + sinkWriteBytes);
         log.info(
-                "FLINK-20-MODULE: Metrics values - sourceReceivedCount: {}, sinkWriteCount: {}, sourceReceivedBytes: {}, sinkWriteBytes: {}",
-                sourceReceivedCount,
+                "FLINK-20-MODULE: Metrics values - sinkWriteCount: {}, sinkWriteBytes: {}",
                 sinkWriteCount,
-                sourceReceivedBytes,
                 sinkWriteBytes);
 
         return StringFormatUtils.formatTable(
@@ -314,11 +755,15 @@ public class FlinkJobMetricsSummary {
                 "Total Time(s)",
                 Duration.between(jobStartTime, jobEndTime).getSeconds(),
                 "Total Read Count",
-                sourceReceivedCount,
+                jobExecutionResult
+                        .getAllAccumulatorResults()
+                        .get(MetricNames.SOURCE_RECEIVED_COUNT),
                 "Total Write Count",
                 sinkWriteCount,
                 "Total Read Bytes",
-                sourceReceivedBytes,
+                jobExecutionResult
+                        .getAllAccumulatorResults()
+                        .get(MetricNames.SOURCE_RECEIVED_BYTES),
                 "Total Write Bytes",
                 sinkWriteBytes);
     }
