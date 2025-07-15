@@ -126,7 +126,6 @@ public class FlinkSourceReaderContext implements SourceReader.Context {
             SourceReaderContext readerContext) {
         try {
             // Flink 1.20中的SourceReaderContext结构可能有所不同
-            // 尝试获取operator字段
             Field field = readerContext.getClass().getDeclaredField("operator");
             field.setAccessible(true);
             AbstractStreamOperator<?> operator =

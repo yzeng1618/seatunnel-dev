@@ -36,9 +36,7 @@ import org.apache.seatunnel.connectors.seatunnel.jdbc.state.XidInfo;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
-import java.sql.Connection;
 import java.sql.SQLException;
-import java.sql.SQLNonTransientConnectionException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -162,85 +160,19 @@ public class JdbcSinkWriter extends AbstractJdbcSinkWriter<ConnectionPoolManager
 
     @Override
     public void close() throws IOException {
-        // 首先尝试刷新缓冲区
+        tryOpen();
+        outputFormat.flush();
         try {
-            tryOpen();
-            outputFormat.flush();
-        } catch (Exception e) {
-            if (isConnectionPoolClosedException(e)) {
-                log.warn("Connection pool already closed during flush: {}", e.getMessage());
-            } else {
-                log.error("Error flushing output format", e);
+            if (!connectionProvider.getConnection().getAutoCommit()) {
+                connectionProvider.getConnection().commit();
             }
-        }
-
-        // 尝试获取连接并提交事务
-        try {
-            Connection connection = null;
-            connection = connectionProvider.getConnection();
-
-            // 只有当连接不为null且有效时才尝试提交
-            if (connection != null) {
-                try {
-                    if (!connection.isClosed() && !connection.getAutoCommit()) {
-                        connection.commit();
-                    }
-                } catch (SQLException e) {
-                    if (isConnectionPoolClosedException(e)) {
-                        log.warn(
-                                "Connection pool already closed when committing: {}",
-                                e.getMessage());
-                    } else {
-                        throw new JdbcConnectorException(
-                                CommonErrorCodeDeprecated.WRITER_OPERATION_FAILED,
-                                "Unable to commit transaction",
-                                e);
-                    }
-                }
-            }
+        } catch (SQLException e) {
+            throw new JdbcConnectorException(
+                    CommonErrorCodeDeprecated.WRITER_OPERATION_FAILED,
+                    "unable to close JDBC sink write",
+                    e);
         } finally {
-            // 最后关闭输出格式
-            try {
-                outputFormat.close();
-            } catch (Exception e) {
-                if (isConnectionPoolClosedException(e)) {
-                    log.warn(
-                            "Connection pool already closed when closing output format: {}",
-                            e.getMessage());
-                } else {
-                    throw new IOException("Error closing output format", e);
-                }
-            }
+            outputFormat.close();
         }
-    }
-
-    /** 检查异常是否与连接池关闭相关 */
-    private boolean isConnectionPoolClosedException(Throwable e) {
-        if (e == null) {
-            return false;
-        }
-
-        // 检查异常消息
-        String message = e.getMessage();
-        if (message != null
-                && (message.contains("HikariDataSource has been closed")
-                        || message.contains("Connection is closed")
-                        || message.contains("Connection pool has been closed")
-                        || message.contains("Pool has been shutdown"))) {
-            return true;
-        }
-
-        // 检查异常类型
-        if (e instanceof SQLNonTransientConnectionException) {
-            return true;
-        }
-
-        // 检查原因链
-        Throwable cause = e.getCause();
-        if (cause != null && cause != e) {
-            return isConnectionPoolClosedException(cause);
-        }
-
-        return false;
     }
 }
