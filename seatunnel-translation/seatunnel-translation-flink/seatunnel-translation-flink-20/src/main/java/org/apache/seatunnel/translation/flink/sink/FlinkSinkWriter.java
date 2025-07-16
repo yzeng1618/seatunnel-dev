@@ -22,7 +22,6 @@ import org.apache.seatunnel.api.common.metrics.MetricNames;
 import org.apache.seatunnel.api.common.metrics.MetricsContext;
 import org.apache.seatunnel.api.sink.SinkWriter;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
-import org.apache.seatunnel.translation.flink.metric.FlinkMetricsRegistry;
 
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.metrics.groups.SinkWriterMetricGroup;
@@ -128,21 +127,17 @@ public class FlinkSinkWriter
             numRecordsSendCounter.inc();
             numBytesSendCounter.inc(bytesSize);
 
-            // 更新SeaTunnel计数器
+            // 更新SeaTunnel计数器（现在会自动注册到accumulator）
             seatunnelWriteCount.inc();
             seatunnelWriteBytes.inc(bytesSize);
 
-            // 更新MetricsRegistry
-            FlinkMetricsRegistry.updateMetric(
-                    jobId,
-                    subtaskIndex,
-                    MetricNames.SINK_WRITE_COUNT,
-                    seatunnelWriteCount.getCount());
-            FlinkMetricsRegistry.updateMetric(
-                    jobId,
-                    subtaskIndex,
-                    MetricNames.SINK_WRITE_BYTES,
-                    seatunnelWriteBytes.getCount());
+            // 调试日志
+            if (log.isDebugEnabled()) {
+                log.debug(
+                        "[METRICS] Updated counters: writeCount={}, writeBytes={}",
+                        seatunnelWriteCount.getCount(),
+                        seatunnelWriteBytes.getCount());
+            }
 
             // 每写入1000条记录打印一次日志
             long count = seatunnelWriteCount.getCount();
@@ -196,8 +191,7 @@ public class FlinkSinkWriter
                     seatunnelWriteCount.getCount(),
                     seatunnelWriteBytes.getCount());
 
-            // 更新全局计数器
-            updateGlobalCounters();
+            // accumulator会自动处理指标收集，不需要手动更新全局计数器
 
             if (endOfInput) {
                 log.info("[METRICS] End of input reached, closing sink writer");
@@ -228,42 +222,6 @@ public class FlinkSinkWriter
         }
     }
 
-    /** 更新全局计数器，用于在作业结束时收集指标 */
-    private void updateGlobalCounters() {
-        try {
-            // 使用任务ID和子任务索引作为键的一部分
-            String writeCountKey =
-                    String.format("%s_%d_%s", jobId, subtaskIndex, MetricNames.SINK_WRITE_COUNT);
-            String writeBytesKey =
-                    String.format("%s_%d_%s", jobId, subtaskIndex, MetricNames.SINK_WRITE_BYTES);
-
-            // 更新全局计数器
-            long currentWriteCount = seatunnelWriteCount.getCount();
-            long currentWriteBytes = seatunnelWriteBytes.getCount();
-
-            GLOBAL_COUNTERS.put(writeCountKey, currentWriteCount);
-            GLOBAL_COUNTERS.put(writeBytesKey, currentWriteBytes);
-
-            // 同时更新不带子任务索引的总计数器
-            String totalWriteCountKey = String.format("%s_%s", jobId, MetricNames.SINK_WRITE_COUNT);
-            String totalWriteBytesKey = String.format("%s_%s", jobId, MetricNames.SINK_WRITE_BYTES);
-
-            GLOBAL_COUNTERS.compute(
-                    totalWriteCountKey, (k, v) -> (v == null ? 0 : v) + currentWriteCount);
-            GLOBAL_COUNTERS.compute(
-                    totalWriteBytesKey, (k, v) -> (v == null ? 0 : v) + currentWriteBytes);
-
-            log.info(
-                    "[METRICS] Updated global counters: {} = {}, {} = {}",
-                    writeCountKey,
-                    GLOBAL_COUNTERS.get(writeCountKey),
-                    writeBytesKey,
-                    GLOBAL_COUNTERS.get(writeBytesKey));
-        } catch (Exception e) {
-            log.warn("[METRICS] Failed to update global counters: {}", e.getMessage());
-        }
-    }
-
     @Override
     public void close() throws Exception {
         try {
@@ -285,11 +243,7 @@ public class FlinkSinkWriter
                     flinkRecordCount,
                     flinkByteCount);
 
-            // 最后一次更新MetricsRegistry
-            FlinkMetricsRegistry.updateMetric(
-                    jobId, subtaskIndex, MetricNames.SINK_WRITE_COUNT, writeCount);
-            FlinkMetricsRegistry.updateMetric(
-                    jobId, subtaskIndex, MetricNames.SINK_WRITE_BYTES, writeBytes);
+            // accumulator会自动处理指标收集，不需要手动更新MetricsRegistry
 
             // 关闭底层的SinkWriter
             if (sinkWriter != null) {

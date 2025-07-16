@@ -23,7 +23,7 @@ import org.apache.seatunnel.api.common.metrics.MetricNames;
 import org.apache.seatunnel.api.common.metrics.MetricsContext;
 import org.apache.seatunnel.api.common.metrics.Unit;
 
-import org.apache.flink.api.common.accumulators.LongCounter;
+import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 
@@ -39,19 +39,46 @@ public class FlinkMetricContext implements MetricsContext {
 
     private final MetricGroup metricGroup;
     private final StreamingRuntimeContext runtimeContext;
+    private final RuntimeContext generalRuntimeContext;
     private final Map<String, Counter> counters = new ConcurrentHashMap<>();
     private final Map<String, Meter> meters = new ConcurrentHashMap<>();
 
     public FlinkMetricContext(StreamingRuntimeContext runtimeContext) {
         this.runtimeContext = runtimeContext;
+        this.generalRuntimeContext = runtimeContext;
         this.metricGroup = runtimeContext != null ? runtimeContext.getMetricGroup() : null;
         log.info(
-                "FlinkMetricContext initialized with runtimeContext: {}",
+                "FlinkMetricContext initialized with StreamingRuntimeContext: {}",
                 runtimeContext != null ? "valid" : "null");
     }
 
+    /** 新的构造函数，支持通过RuntimeContext注册accumulator */
+    public FlinkMetricContext(RuntimeContext runtimeContext, MetricGroup metricGroup) {
+        this.runtimeContext =
+                runtimeContext instanceof StreamingRuntimeContext
+                        ? (StreamingRuntimeContext) runtimeContext
+                        : null;
+        this.generalRuntimeContext = runtimeContext;
+        this.metricGroup = metricGroup;
+        log.info(
+                "FlinkMetricContext initialized with RuntimeContext: {}, MetricGroup: {}",
+                runtimeContext != null ? "valid" : "null",
+                metricGroup != null ? "valid" : "null");
+    }
+
+    /** 只使用MetricGroup的构造函数，用于回退情况 */
     public FlinkMetricContext(MetricGroup metricGroup) {
         this.metricGroup = metricGroup;
+        this.generalRuntimeContext = null;
+        this.runtimeContext = null;
+        log.info(
+                "FlinkMetricContext initialized with MetricGroup only: {}",
+                metricGroup != null ? "valid" : "null");
+    }
+
+    public FlinkMetricContext(MetricGroup metricGroup, RuntimeContext generalRuntimeContext) {
+        this.metricGroup = metricGroup;
+        this.generalRuntimeContext = generalRuntimeContext;
         this.runtimeContext = null;
         log.info(
                 "FlinkMetricContext initialized with metricGroup: {}",
@@ -76,11 +103,14 @@ public class FlinkMetricContext implements MetricsContext {
             org.apache.flink.metrics.Counter flinkCounter = metricGroup.counter(name);
 
             // 对于关键指标，同时创建累加器
-            if (isKeyMetric(name) && runtimeContext != null) {
+            if (isKeyMetric(name) && generalRuntimeContext != null) {
                 try {
-                    LongCounter accumulator = new LongCounter();
-                    runtimeContext.addAccumulator(name, accumulator);
-                    Counter counter = new FlinkAccumulatorCounter(flinkCounter, accumulator);
+                    // 显式声明参数类型以避免编译器混淆
+                    String counterName = name;
+                    org.apache.flink.metrics.Counter fCounter = flinkCounter;
+                    RuntimeContext rContext = generalRuntimeContext;
+
+                    Counter counter = new FlinkAccumulatorCounter(counterName, fCounter, rContext);
                     counters.put(name, counter);
                     log.info("Created counter with accumulator: {}", name);
                     return counter;
@@ -169,54 +199,6 @@ public class FlinkMetricContext implements MetricsContext {
         @Override
         public void inc(long n) {
             flinkCounter.inc(n);
-        }
-
-        @Override
-        public void dec() {}
-
-        @Override
-        public void dec(long n) {}
-
-        @Override
-        public void set(long n) {}
-
-        @Override
-        public long getCount() {
-            return flinkCounter.getCount();
-        }
-
-        @Override
-        public String name() {
-            return "";
-        }
-
-        @Override
-        public Unit unit() {
-            return null;
-        }
-    }
-
-    /** 同时更新计数器和累加器的计数器实现 */
-    private static class FlinkAccumulatorCounter implements Counter {
-        private final org.apache.flink.metrics.Counter flinkCounter;
-        private final LongCounter accumulator;
-
-        FlinkAccumulatorCounter(
-                org.apache.flink.metrics.Counter flinkCounter, LongCounter accumulator) {
-            this.flinkCounter = flinkCounter;
-            this.accumulator = accumulator;
-        }
-
-        @Override
-        public void inc() {
-            flinkCounter.inc();
-            accumulator.add(1L);
-        }
-
-        @Override
-        public void inc(long n) {
-            flinkCounter.inc(n);
-            accumulator.add(n);
         }
 
         @Override
