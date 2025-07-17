@@ -46,8 +46,8 @@ public class FileUtils {
         switch (args.getDeployMode()) {
             case RUN:
             case CLIENT:
-                return Paths.get(args.getConfigFile());
             case RUN_APPLICATION:
+                return Paths.get(args.getConfigFile());
             case CLUSTER:
                 return Paths.get(getFileName(args.getConfigFile()));
             default:

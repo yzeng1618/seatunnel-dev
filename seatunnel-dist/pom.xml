@@ -66,6 +66,19 @@
                             <appendAssemblyId>true</appendAssemblyId>
                         </configuration>
                     </execution>
+                    <execution>
+                        <id>flowtask</id>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <phase>package</phase>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/main/assembly/assembly-flowtask.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>true</appendAssemblyId>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
         </plugins>

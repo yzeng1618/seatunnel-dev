@@ -215,6 +215,12 @@
             <includes>
                 <include>org.apache.seatunnel:connector-fake:jar</include>
                 <include>org.apache.seatunnel:connector-console:jar</include>
+                <!-- 添加Hive connector -->
+                <include>org.apache.seatunnel:connector-hive:jar</include>
+                <!-- 添加你需要的其他connector -->
+                <!-- <include>org.apache.seatunnel:connector-jdbc:jar</include> -->
+                <!-- <include>org.apache.seatunnel:connector-kafka:jar</include> -->
+                <!-- 注意：connector-cdc-base是基础包，如果使用CDC相关connector需要保留 -->
                 <include>org.apache.seatunnel:connector-cdc-base:jar</include>
             </includes>
             <outputDirectory>/connectors</outputDirectory>
