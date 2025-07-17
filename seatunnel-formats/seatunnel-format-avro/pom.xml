@@ -26,7 +26,7 @@
     <name>SeaTunnel : Formats : Avro</name>
 
     <properties>
-        <avro.version>1.11.1</avro.version>
+        <avro.version>1.11.3</avro.version>
     </properties>
 
     <dependencies>
@@ -35,6 +35,12 @@
             <artifactId>seatunnel-api</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.avro</groupId>
+                    <artifactId>avro</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.apache.avro</groupId>
