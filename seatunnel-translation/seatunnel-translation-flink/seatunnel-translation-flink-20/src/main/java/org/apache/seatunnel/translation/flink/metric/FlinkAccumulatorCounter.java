@@ -26,15 +26,12 @@ import org.apache.flink.api.common.functions.RuntimeContext;
 
 import lombok.extern.slf4j.Slf4j;
 
-/** Flink 1.20 专用的计数器实现，同时支持Flink指标和累加器 这个实现将指标注册为Flink的accumulator，确保在作业结束时能够正确收集 */
 @Slf4j
 public class FlinkAccumulatorCounter implements Counter {
     private final String name;
     private final org.apache.flink.metrics.Counter flinkCounter;
     private final LongCounter accumulator;
     private final RuntimeContext runtimeContext;
-
-    // 本地计数器，用于备份
     private volatile long localCount = 0L;
 
     public FlinkAccumulatorCounter(
@@ -45,10 +42,8 @@ public class FlinkAccumulatorCounter implements Counter {
         this.flinkCounter = flinkCounter;
         this.runtimeContext = runtimeContext;
         this.accumulator = new LongCounter();
-
-        // 注册accumulator到RuntimeContext
+        
         try {
-            // 使用标准的指标名称，确保与FlinkJobMetricsSummary中的查找逻辑匹配
             String accumulatorName = getStandardAccumulatorName(name);
             runtimeContext.addAccumulator(accumulatorName, accumulator);
             log.info(
@@ -68,23 +63,17 @@ public class FlinkAccumulatorCounter implements Counter {
     @Override
     public void inc(long n) {
         try {
-            // 更新Flink计数器
             if (flinkCounter != null) {
                 flinkCounter.inc(n);
             }
-
-            // 更新accumulator
+            
             accumulator.add(n);
-
-            // 更新本地计数器
+            
             localCount += n;
 
-            if (log.isDebugEnabled()) {
-                log.debug("Counter [{}] incremented by {}, new value: {}", name, n, localCount);
-            }
+
         } catch (Exception e) {
             log.warn("Error incrementing counter {}: {}", name, e.getMessage());
-            // 即使出错也要更新本地计数器
             localCount += n;
         }
     }
@@ -97,23 +86,17 @@ public class FlinkAccumulatorCounter implements Counter {
     @Override
     public void dec(long n) {
         try {
-            // Flink计数器不支持减法，使用负数增加
             if (flinkCounter != null) {
                 flinkCounter.inc(-n);
             }
-
-            // accumulator支持负数
+            
             accumulator.add(-n);
-
-            // 更新本地计数器
+            
             localCount -= n;
 
-            if (log.isDebugEnabled()) {
-                log.debug("Counter [{}] decremented by {}, new value: {}", name, n, localCount);
-            }
+
         } catch (Exception e) {
             log.warn("Error decrementing counter {}: {}", name, e.getMessage());
-            // 即使出错也要更新本地计数器
             localCount -= n;
         }
     }
@@ -121,7 +104,6 @@ public class FlinkAccumulatorCounter implements Counter {
     @Override
     public void set(long n) {
         try {
-            // 计算差值并更新
             long diff = n - localCount;
 
             if (flinkCounter != null) {
@@ -143,18 +125,13 @@ public class FlinkAccumulatorCounter implements Counter {
     @Override
     public long getCount() {
         try {
-            // 优先返回accumulator的值
             long accumulatorValue = accumulator.getLocalValue();
             if (accumulatorValue != localCount) {
-                log.debug(
-                        "Accumulator value {} differs from local count {}, using accumulator value",
-                        accumulatorValue,
-                        localCount);
                 localCount = accumulatorValue;
             }
             return accumulatorValue;
         } catch (Exception e) {
-            log.debug("Failed to get accumulator value, using local count: {}", localCount);
+            log.warn("Failed to get accumulator value, using local count: {}", localCount);
             return localCount;
         }
     }
@@ -169,12 +146,10 @@ public class FlinkAccumulatorCounter implements Counter {
         return Unit.COUNT;
     }
 
-    /** 获取accumulator实例，用于测试和调试 */
     public LongCounter getAccumulator() {
         return accumulator;
     }
 
-    /** 强制同步accumulator和本地计数器 */
     public void sync() {
         try {
             long accumulatorValue = accumulator.getLocalValue();
@@ -191,9 +166,7 @@ public class FlinkAccumulatorCounter implements Counter {
         }
     }
 
-    /** 获取标准的accumulator名称，确保与FlinkJobMetricsSummary中的查找逻辑匹配 */
     private String getStandardAccumulatorName(String originalName) {
-        // 根据FlinkJobMetricsSummary中的查找逻辑，使用标准的指标名称
         if (originalName.contains("SinkWriteCount")
                 || originalName.equals(MetricNames.SINK_WRITE_COUNT)) {
             return MetricNames.SINK_WRITE_COUNT;
@@ -207,7 +180,6 @@ public class FlinkAccumulatorCounter implements Counter {
                 || originalName.equals(MetricNames.SOURCE_RECEIVED_BYTES)) {
             return MetricNames.SOURCE_RECEIVED_BYTES;
         }
-        // 如果不匹配已知的指标名称，返回原始名称
         return originalName;
     }
 }

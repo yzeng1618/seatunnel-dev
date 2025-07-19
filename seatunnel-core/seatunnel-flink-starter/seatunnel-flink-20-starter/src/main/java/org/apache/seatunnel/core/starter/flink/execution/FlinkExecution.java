@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.seatunnel.core.starter.flink.execution;
 
 import org.apache.seatunnel.shade.com.typesafe.config.Config;
@@ -36,7 +53,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-/** Flink 1.20 专用的执行类 */
 public class FlinkExecution implements TaskExecution {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(FlinkExecution.class);
@@ -120,7 +136,6 @@ public class FlinkExecution implements TaskExecution {
                             .execute(flinkRuntimeEnvironment.getJobName());
             final long jobEndTime = System.currentTimeMillis();
 
-            // 这里是Flink 1.20特有的处理逻辑
             final FlinkJobMetricsSummary jobMetricsSummary =
                     createFlink20JobMetricsSummary(jobResult, jobStartTime, jobEndTime);
 
@@ -130,19 +145,12 @@ public class FlinkExecution implements TaskExecution {
         }
     }
 
-    /** 创建Flink 1.20专用的FlinkJobMetricsSummary */
     protected FlinkJobMetricsSummary createFlink20JobMetricsSummary(
             JobExecutionResult jobResult, long jobStartTime, long jobEndTime) {
-        LOGGER.info("Creating Flink 1.20 specific FlinkJobMetricsSummary");
-
-        // 获取作业ID，用于日志记录
         String jobId = jobResult.getJobID().toString();
-        LOGGER.info("Job ID: {}", jobId);
 
-        // 记录可用的累加器
-        LOGGER.info("Available accumulators: {}", jobResult.getAllAccumulatorResults().keySet());
+        LOGGER.info("Flink 1.20 specific FlinkJobMetricsSummary, Available accumulators: {}", jobResult.getAllAccumulatorResults().keySet());
 
-        // 记录系统属性中的指标
         String metricPrefix = "seatunnel.metric." + jobId + ".";
         System.getProperties().stringPropertyNames().stream()
                 .filter(name -> name.startsWith(metricPrefix))
@@ -153,7 +161,6 @@ public class FlinkExecution implements TaskExecution {
                                         name,
                                         System.getProperty(name)));
 
-        // 使用Flink 1.20专用的FlinkJobMetricsSummary
         return FlinkJobMetricsSummary.builder()
                 .jobExecutionResult(jobResult)
                 .jobStartTime(jobStartTime)
@@ -183,10 +190,8 @@ public class FlinkExecution implements TaskExecution {
                                     }
                                 })
                         .collect(Collectors.toList());
-        jarDependencies.forEach(
-                url ->
-                        FlinkAbstractPluginExecuteProcessor.ADD_URL_TO_CLASSLOADER.accept(
-                                Thread.currentThread().getContextClassLoader(), url));
+        FlinkAbstractPluginExecuteProcessor.ADD_URL_TO_CLASSLOADER.accept(
+                Thread.currentThread().getContextClassLoader(), jarDependencies);
         jarPaths.addAll(jarDependencies);
     }
 

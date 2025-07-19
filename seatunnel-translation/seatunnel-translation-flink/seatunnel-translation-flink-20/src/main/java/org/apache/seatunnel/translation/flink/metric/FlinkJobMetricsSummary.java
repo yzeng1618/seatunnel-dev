@@ -30,7 +30,6 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Flink 1.20 专用的作业指标摘要类 主要从Flink的accumulator中获取指标数据 */
 @Slf4j
 public class FlinkJobMetricsSummary {
 
@@ -50,12 +49,10 @@ public class FlinkJobMetricsSummary {
                 jobExecutionResult != null ? jobExecutionResult.getJobID() : "null");
     }
 
-    /** 创建一个 FlinkJobMetricsSummary 的 Builder */
     public static Builder builder() {
         return new Builder();
     }
 
-    /** FlinkJobMetricsSummary 的 Builder 类 */
     public static class Builder {
         private JobExecutionResult jobExecutionResult;
         private long jobStartTime;
@@ -86,7 +83,6 @@ public class FlinkJobMetricsSummary {
         }
     }
 
-    /** 获取作业指标，主要从Flink的accumulator中获取 */
     public Map<String, Object> getMetrics() {
         Map<String, Object> metrics = new HashMap<>();
 
@@ -96,12 +92,9 @@ public class FlinkJobMetricsSummary {
         }
 
         String jobId = jobExecutionResult.getJobID().toString();
-        log.debug("Getting metrics for job: {}", jobId);
 
-        // 从Flink的accumulator中获取指标
         try {
             Map<String, Object> accumulatorResults = jobExecutionResult.getAllAccumulatorResults();
-            log.debug("Available accumulators: {}", accumulatorResults.keySet());
 
             for (Map.Entry<String, Object> entry : accumulatorResults.entrySet()) {
                 String key = entry.getKey();
@@ -110,25 +103,23 @@ public class FlinkJobMetricsSummary {
                 if (value instanceof Number) {
                     long longValue = ((Number) value).longValue();
 
-                    // 匹配Sink指标
                     if (key.equals(MetricNames.SINK_WRITE_COUNT)
                             || key.contains("SinkWriteCount")) {
                         metrics.put(MetricNames.SINK_WRITE_COUNT, longValue);
-                        log.debug("Found sink write count: {}", longValue);
+
                     } else if (key.equals(MetricNames.SINK_WRITE_BYTES)
                             || key.contains("SinkWriteBytes")) {
                         metrics.put(MetricNames.SINK_WRITE_BYTES, longValue);
-                        log.debug("Found sink write bytes: {}", longValue);
+
                     }
-                    // 匹配Source指标
                     else if (key.equals(MetricNames.SOURCE_RECEIVED_COUNT)
                             || key.contains("SourceReceivedCount")) {
                         metrics.put(MetricNames.SOURCE_RECEIVED_COUNT, longValue);
-                        log.debug("Found source received count: {}", longValue);
+
                     } else if (key.equals(MetricNames.SOURCE_RECEIVED_BYTES)
                             || key.contains("SourceReceivedBytes")) {
                         metrics.put(MetricNames.SOURCE_RECEIVED_BYTES, longValue);
-                        log.debug("Found source received bytes: {}", longValue);
+
                     }
                 }
             }
@@ -166,7 +157,6 @@ public class FlinkJobMetricsSummary {
     public String toString() {
         Map<String, Object> metrics = getMetrics();
 
-        // 获取指标值
         long sourceReadCount = getCounterValue(metrics, MetricNames.SOURCE_RECEIVED_COUNT, 0L);
         long sourceReadBytes = getCounterValue(metrics, MetricNames.SOURCE_RECEIVED_BYTES, 0L);
         long sinkWriteCount = getCounterValue(metrics, MetricNames.SINK_WRITE_COUNT, 0L);

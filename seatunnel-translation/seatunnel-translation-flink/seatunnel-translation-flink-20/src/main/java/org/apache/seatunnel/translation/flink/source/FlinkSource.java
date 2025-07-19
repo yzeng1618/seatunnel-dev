@@ -77,7 +77,6 @@ public class FlinkSource<SplitT extends SourceSplit, EnumStateT extends Serializ
         org.apache.seatunnel.api.source.SourceReader<SeaTunnelRow, SplitT> reader =
                 source.createReader(context);
 
-        // 使用flink-20模块中的FlinkSourceReader类
         return new FlinkSourceReader<>(reader, context, envConfig);
     }
 

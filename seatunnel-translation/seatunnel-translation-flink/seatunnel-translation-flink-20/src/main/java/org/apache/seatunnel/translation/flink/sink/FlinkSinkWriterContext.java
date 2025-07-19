@@ -64,7 +64,6 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
             MetricGroup metricGroup = initContext.metricGroup();
 
             if (runtimeContext != null && metricGroup != null) {
-                // 使用支持accumulator的构造函数
                 return new FlinkMetricContext(runtimeContext, metricGroup);
             } else {
                 log.warn("RuntimeContext or MetricGroup is null, using fallback");
@@ -72,7 +71,6 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
             }
         } catch (Exception e) {
             log.warn("Failed to create metrics context", e);
-            // 返回一个空的MetricsContext而不是null，避免NPE
             return new FlinkMetricContext((MetricGroup) null);
         }
     }
@@ -82,31 +80,22 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
         return eventListener;
     }
 
-    /**
-     * 获取RuntimeContext，用于注册accumulator 在Flink 1.20中，InitContext可能有多种实现： 1.
-     * InitContextImpl继承自InitContextBase 2. InitContextWrapper包装了实际的InitContext 我们需要处理这两种情况
-     *
-     * @return RuntimeContext实例，如果无法获取则返回null
-     */
     public RuntimeContext getRuntimeContext() {
         try {
             log.debug(
                     "Attempting to get RuntimeContext from InitContext: {}",
                     initContext.getClass().getName());
 
-            // 优先使用字段扫描方法，因为测试证明这是最可靠的
             RuntimeContext runtimeContext = tryGetFromFields(initContext);
             if (runtimeContext != null) {
                 return runtimeContext;
             }
 
-            // 备选方法1: 尝试直接从InitContextBase获取
             runtimeContext = tryGetFromInitContextBase(initContext);
             if (runtimeContext != null) {
                 return runtimeContext;
             }
 
-            // 备选方法2: 如果是包装器类，尝试获取被包装的对象
             runtimeContext = tryGetFromWrapper(initContext);
             if (runtimeContext != null) {
                 return runtimeContext;
@@ -123,7 +112,6 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
         }
     }
 
-    /** 尝试从InitContextBase获取RuntimeContext */
     private RuntimeContext tryGetFromInitContextBase(Object context) {
         try {
             Class<?> initContextBaseClass =
@@ -146,10 +134,8 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
         return null;
     }
 
-    /** 尝试从包装器类获取RuntimeContext */
     private RuntimeContext tryGetFromWrapper(Object context) {
         try {
-            // 查找可能的包装字段名
             String[] possibleFieldNames = {
                 "delegate", "wrapped", "context", "initContext", "writerInitContext"
             };
@@ -167,7 +153,6 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
                                 fieldName,
                                 wrappedContext.getClass().getName());
 
-                        // 递归尝试从包装的对象获取RuntimeContext
                         RuntimeContext runtimeContext = tryGetFromInitContextBase(wrappedContext);
                         if (runtimeContext != null) {
                             log.info(
@@ -177,7 +162,7 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
                         }
                     }
                 } catch (NoSuchFieldException ignored) {
-                    // 继续尝试下一个字段名
+                    log.debug("Field '{}' not found in class '{}'", fieldName, contextClass.getName());
                 }
             }
         } catch (Exception e) {
@@ -186,7 +171,6 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
         return null;
     }
 
-    /** 尝试通过反射查找RuntimeContext字段 */
     private RuntimeContext tryGetFromFields(Object context) {
         try {
             Class<?> contextClass = context.getClass();
@@ -215,7 +199,6 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
 
     private static String getFlinkJobId(Sink.InitContext context) {
         try {
-            // 尝试获取JobID，如果无法获取则返回null
             return context.getJobInfo().getJobId().toString();
         } catch (Exception e) {
             log.warn("Get flink job id failed", e);

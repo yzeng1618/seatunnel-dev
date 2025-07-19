@@ -58,7 +58,6 @@ public class FlinkSourceSplitEnumeratorContext<SplitT extends SourceSplit>
             SplitEnumeratorContext<SplitWrapper<SplitT>> enumContext) {
         this.enumContext = enumContext;
 
-        // 获取JobID，但不让异常影响构造函数
         String jobId = null;
         try {
             jobId = getFlinkJobId(enumContext);
@@ -66,7 +65,6 @@ public class FlinkSourceSplitEnumeratorContext<SplitT extends SourceSplit>
             log.warn("Failed to get Flink JobID, event processing may be limited", e);
         }
 
-        // 如果无法获取JobID，尝试生成一个唯一ID作为替代
         if (jobId == null || jobId.equals("unknown-job-id")) {
             jobId = "generated-" + UUID.randomUUID().toString();
             log.info("Using generated JobID: {}", jobId);
@@ -117,7 +115,6 @@ public class FlinkSourceSplitEnumeratorContext<SplitT extends SourceSplit>
         return eventListener;
     }
 
-    // 提供对原始enumContext的访问，以便FlinkSourceEnumerator可以使用它
     public SplitEnumeratorContext<SplitWrapper<SplitT>> getEnumContext() {
         return enumContext;
     }
@@ -139,12 +136,10 @@ public class FlinkSourceSplitEnumeratorContext<SplitT extends SourceSplit>
 
     private static String getJobIdForFlink20(SplitEnumeratorContext enumContext) {
         try {
-            // 首先尝试获取SourceCoordinatorContext
             if (enumContext instanceof SourceCoordinatorContext) {
                 SourceCoordinatorContext coordinatorContext =
                         (SourceCoordinatorContext) enumContext;
 
-                // 由于getCoordinatorContext()是包私有的，我们需要通过反射获取operatorCoordinatorContext字段
                 Field field =
                         coordinatorContext
                                 .getClass()
@@ -153,12 +148,10 @@ public class FlinkSourceSplitEnumeratorContext<SplitT extends SourceSplit>
                 OperatorCoordinator.Context operatorCoordinatorContext =
                         (OperatorCoordinator.Context) field.get(coordinatorContext);
 
-                // 尝试获取OperatorID，它通常包含JobID信息
                 try {
                     OperatorID operatorID = operatorCoordinatorContext.getOperatorId();
                     if (operatorID != null) {
                         String operatorIdStr = operatorID.toString();
-                        // OperatorID通常格式为：<jobId>_<vertexId>_<subtaskIndex>
                         if (operatorIdStr.contains("_")) {
                             return operatorIdStr.split("_")[0];
                         }
@@ -167,12 +160,10 @@ public class FlinkSourceSplitEnumeratorContext<SplitT extends SourceSplit>
                     log.debug("Failed to get JobID from OperatorID: {}", e.getMessage());
                 }
 
-                // 尝试从CheckpointCoordinator获取JobID
                 try {
                     CheckpointCoordinator checkpointCoordinator =
                             operatorCoordinatorContext.getCheckpointCoordinator();
                     if (checkpointCoordinator != null) {
-                        // 通过反射获取JobID
                         Field jobField = checkpointCoordinator.getClass().getDeclaredField("job");
                         jobField.setAccessible(true);
                         Object job = jobField.get(checkpointCoordinator);
@@ -189,7 +180,6 @@ public class FlinkSourceSplitEnumeratorContext<SplitT extends SourceSplit>
                 }
             }
 
-            // 方法6: 尝试从线程名称中提取JobID
             String threadName = Thread.currentThread().getName();
             if (threadName.contains("jobmanager-job_")) {
                 int startIndex = threadName.indexOf("jobmanager-job_") + "jobmanager-job_".length();
@@ -199,7 +189,6 @@ public class FlinkSourceSplitEnumeratorContext<SplitT extends SourceSplit>
                 }
             }
 
-            // 方法7: 尝试从MDC上下文中获取JobID
             try {
                 String mdcJobId = MDC.get("flink.jobId");
                 if (mdcJobId != null && !mdcJobId.isEmpty()) {

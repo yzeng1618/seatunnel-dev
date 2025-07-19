@@ -152,7 +152,6 @@ public class SinkExecuteProcessor
                                     ? envConfig.getInt(EnvCommonOptions.PARALLELISM.key())
                                     : 1;
 
-            // 直接使用 sinkTo 方法，不再使用 SinkV1Adapter.wrap
             DataStreamSink<SeaTunnelRow> dataStreamSink =
                     stream.getDataStream()
                             .sinkTo(new FlinkSink(sink, stream.getCatalogTables(), parallelism))

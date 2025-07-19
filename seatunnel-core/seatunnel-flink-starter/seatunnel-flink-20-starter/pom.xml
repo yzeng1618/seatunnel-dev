@@ -42,7 +42,6 @@
             <groupId>org.apache.seatunnel</groupId>
             <artifactId>seatunnel-translation-flink-20</artifactId>
             <version>${project.version}</version>
-            <!-- 添加优先级 -->
             <scope>compile</scope>
         </dependency>
 

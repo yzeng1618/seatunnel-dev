@@ -52,11 +52,9 @@ public class FlinkSink implements Sink<SeaTunnelRow> {
         log.info("Creating FlinkSinkWriter with context: {}", context);
         FlinkSinkWriterContext writerContext = new FlinkSinkWriterContext(context, parallelism);
 
-        // 创建SeaTunnel SinkWriter
         org.apache.seatunnel.api.sink.SinkWriter<SeaTunnelRow, ?, ?> seatunnelWriter =
                 seaTunnelSink.createWriter(writerContext);
 
-        // 传递context和MetricsContext给FlinkSinkWriter
         return new FlinkSinkWriter(seatunnelWriter, context, writerContext.getMetricsContext());
     }
 }

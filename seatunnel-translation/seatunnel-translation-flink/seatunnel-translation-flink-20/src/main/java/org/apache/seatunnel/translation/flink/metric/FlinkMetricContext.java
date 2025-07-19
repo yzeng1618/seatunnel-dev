@@ -76,15 +76,6 @@ public class FlinkMetricContext implements MetricsContext {
                 metricGroup != null ? "valid" : "null");
     }
 
-    public FlinkMetricContext(MetricGroup metricGroup, RuntimeContext generalRuntimeContext) {
-        this.metricGroup = metricGroup;
-        this.generalRuntimeContext = generalRuntimeContext;
-        this.runtimeContext = null;
-        log.info(
-                "FlinkMetricContext initialized with metricGroup: {}",
-                metricGroup != null ? "valid" : "null");
-    }
-
     @Override
     public Counter counter(String name) {
         Counter existingCounter = counters.get(name);
