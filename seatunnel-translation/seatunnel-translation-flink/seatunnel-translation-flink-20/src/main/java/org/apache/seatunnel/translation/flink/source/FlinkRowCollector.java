@@ -69,7 +69,6 @@ public class FlinkRowCollector implements Collector<SeaTunnelRow> {
             sourceReadQPS.markEvent();
             emptyThisPollNext = false;
 
-
         } catch (Exception e) {
             log.error("Error collecting record: {}", record, e);
             throw new RuntimeException(e);

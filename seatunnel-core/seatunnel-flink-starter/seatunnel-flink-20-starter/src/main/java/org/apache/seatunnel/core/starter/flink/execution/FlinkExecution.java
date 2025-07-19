@@ -149,7 +149,9 @@ public class FlinkExecution implements TaskExecution {
             JobExecutionResult jobResult, long jobStartTime, long jobEndTime) {
         String jobId = jobResult.getJobID().toString();
 
-        LOGGER.info("Flink 1.20 specific FlinkJobMetricsSummary, Available accumulators: {}", jobResult.getAllAccumulatorResults().keySet());
+        LOGGER.info(
+                "Flink 1.20 specific FlinkJobMetricsSummary, Available accumulators: {}",
+                jobResult.getAllAccumulatorResults().keySet());
 
         String metricPrefix = "seatunnel.metric." + jobId + ".";
         System.getProperties().stringPropertyNames().stream()

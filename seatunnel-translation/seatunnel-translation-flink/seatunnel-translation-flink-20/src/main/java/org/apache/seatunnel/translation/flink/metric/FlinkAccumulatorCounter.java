@@ -42,7 +42,7 @@ public class FlinkAccumulatorCounter implements Counter {
         this.flinkCounter = flinkCounter;
         this.runtimeContext = runtimeContext;
         this.accumulator = new LongCounter();
-        
+
         try {
             String accumulatorName = getStandardAccumulatorName(name);
             runtimeContext.addAccumulator(accumulatorName, accumulator);
@@ -66,11 +66,10 @@ public class FlinkAccumulatorCounter implements Counter {
             if (flinkCounter != null) {
                 flinkCounter.inc(n);
             }
-            
-            accumulator.add(n);
-            
-            localCount += n;
 
+            accumulator.add(n);
+
+            localCount += n;
 
         } catch (Exception e) {
             log.warn("Error incrementing counter {}: {}", name, e.getMessage());
@@ -89,11 +88,10 @@ public class FlinkAccumulatorCounter implements Counter {
             if (flinkCounter != null) {
                 flinkCounter.inc(-n);
             }
-            
-            accumulator.add(-n);
-            
-            localCount -= n;
 
+            accumulator.add(-n);
+
+            localCount -= n;
 
         } catch (Exception e) {
             log.warn("Error decrementing counter {}: {}", name, e.getMessage());

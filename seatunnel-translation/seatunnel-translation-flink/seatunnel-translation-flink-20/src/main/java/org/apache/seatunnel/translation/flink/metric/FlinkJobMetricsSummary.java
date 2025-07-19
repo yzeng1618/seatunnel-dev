@@ -111,15 +111,13 @@ public class FlinkJobMetricsSummary {
                             || key.contains("SinkWriteBytes")) {
                         metrics.put(MetricNames.SINK_WRITE_BYTES, longValue);
 
-                    }
-                    else if (key.equals(MetricNames.SOURCE_RECEIVED_COUNT)
+                    } else if (key.equals(MetricNames.SOURCE_RECEIVED_COUNT)
                             || key.contains("SourceReceivedCount")) {
                         metrics.put(MetricNames.SOURCE_RECEIVED_COUNT, longValue);
 
                     } else if (key.equals(MetricNames.SOURCE_RECEIVED_BYTES)
                             || key.contains("SourceReceivedBytes")) {
                         metrics.put(MetricNames.SOURCE_RECEIVED_BYTES, longValue);
-
                     }
                 }
             }

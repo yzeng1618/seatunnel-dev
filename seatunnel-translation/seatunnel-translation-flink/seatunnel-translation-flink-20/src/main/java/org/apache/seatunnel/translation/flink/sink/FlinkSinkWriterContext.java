@@ -162,7 +162,10 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
                         }
                     }
                 } catch (NoSuchFieldException ignored) {
-                    log.debug("Field '{}' not found in class '{}'", fieldName, contextClass.getName());
+                    log.debug(
+                            "Field '{}' not found in class '{}'",
+                            fieldName,
+                            contextClass.getName());
                 }
             }
         } catch (Exception e) {

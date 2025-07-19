@@ -36,20 +36,20 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class FlinkSinkWriter
         implements org.apache.flink.api.connector.sink2.SinkWriter<SeaTunnelRow> {
-    
+
     public static final Map<String, Long> GLOBAL_COUNTERS = new ConcurrentHashMap<>();
 
     private final SinkWriter<SeaTunnelRow, ?, ?> sinkWriter;
-    
+
     private final org.apache.flink.metrics.Counter numRecordsSendCounter;
     private final org.apache.flink.metrics.Counter numBytesSendCounter;
-    
+
     private final Counter seatunnelWriteCount;
     private final Counter seatunnelWriteBytes;
 
     private final Sink.InitContext context;
     private final SinkWriterMetricGroup metricGroup;
-    
+
     private final String jobId;
     private final int subtaskIndex;
 
@@ -156,7 +156,6 @@ public class FlinkSinkWriter
                     endOfInput,
                     seatunnelWriteCount.getCount(),
                     seatunnelWriteBytes.getCount());
-
 
             if (endOfInput) {
                 log.info("[METRICS] End of input reached, closing sink writer");
