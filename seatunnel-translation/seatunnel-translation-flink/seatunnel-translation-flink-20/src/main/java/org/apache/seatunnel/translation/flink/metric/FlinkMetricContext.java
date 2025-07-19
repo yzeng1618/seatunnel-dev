@@ -52,7 +52,6 @@ public class FlinkMetricContext implements MetricsContext {
                 runtimeContext != null ? "valid" : "null");
     }
 
-    /** 新的构造函数，支持通过RuntimeContext注册accumulator */
     public FlinkMetricContext(RuntimeContext runtimeContext, MetricGroup metricGroup) {
         this.runtimeContext =
                 runtimeContext instanceof StreamingRuntimeContext
@@ -66,7 +65,6 @@ public class FlinkMetricContext implements MetricsContext {
                 metricGroup != null ? "valid" : "null");
     }
 
-    /** 只使用MetricGroup的构造函数，用于回退情况 */
     public FlinkMetricContext(MetricGroup metricGroup) {
         this.metricGroup = metricGroup;
         this.generalRuntimeContext = null;
@@ -93,10 +91,8 @@ public class FlinkMetricContext implements MetricsContext {
         try {
             org.apache.flink.metrics.Counter flinkCounter = metricGroup.counter(name);
 
-            // 对于关键指标，同时创建累加器
             if (isKeyMetric(name) && generalRuntimeContext != null) {
                 try {
-                    // 显式声明参数类型以避免编译器混淆
                     String counterName = name;
                     org.apache.flink.metrics.Counter fCounter = flinkCounter;
                     RuntimeContext rContext = generalRuntimeContext;
@@ -113,7 +109,6 @@ public class FlinkMetricContext implements MetricsContext {
                 }
             }
 
-            // 创建普通计数器
             Counter counter = new FlinkCounter(flinkCounter);
             counters.put(name, counter);
             log.debug("Created counter: {}", name);
@@ -166,7 +161,6 @@ public class FlinkMetricContext implements MetricsContext {
         return null;
     }
 
-    /** 判断是否是关键指标 */
     private boolean isKeyMetric(String name) {
         return name.equals(MetricNames.SOURCE_RECEIVED_COUNT)
                 || name.equals(MetricNames.SOURCE_RECEIVED_BYTES)
@@ -217,7 +211,6 @@ public class FlinkMetricContext implements MetricsContext {
         }
     }
 
-    /** 无操作的计数器实现 */
     private static class NoOpCounter implements Counter {
         private final AtomicLong count = new AtomicLong(0);
 
@@ -256,7 +249,6 @@ public class FlinkMetricContext implements MetricsContext {
         }
     }
 
-    /** Flink 计量器实现 */
     private static class FlinkMeter implements Meter {
         private final org.apache.flink.metrics.Meter flinkMeter;
 
@@ -295,7 +287,6 @@ public class FlinkMetricContext implements MetricsContext {
         }
     }
 
-    /** 无操作的计量器实现 */
     private static class NoOpMeter implements Meter {
         private final AtomicLong count = new AtomicLong(0);
 

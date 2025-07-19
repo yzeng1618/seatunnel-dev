@@ -41,7 +41,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
- * Flink 1.20 专用的SourceReader实现 这个实现适配了Flink 1.20的Source API，并支持指标收集
+ * Flink 1.20 specific SourceReader implementation that adapts Flink 1.20 Source API and supports
+ * metric collection
  *
  * @param <SplitT> The generic type of source split
  */

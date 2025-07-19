@@ -39,7 +39,6 @@ public class EnumeratorStateSerializer<T> implements SimpleVersionedSerializer<T
 
     @Override
     public int getVersion() {
-        // 由于Serializer接口没有getVersion方法，我们返回一个固定版本号
         return 0;
     }
 
@@ -50,7 +49,6 @@ public class EnumeratorStateSerializer<T> implements SimpleVersionedSerializer<T
 
     @Override
     public T deserialize(int version, byte[] serialized) throws IOException {
-        // 忽略version参数，直接调用Serializer的deserialize方法
         return serializer.deserialize(serialized);
     }
 }

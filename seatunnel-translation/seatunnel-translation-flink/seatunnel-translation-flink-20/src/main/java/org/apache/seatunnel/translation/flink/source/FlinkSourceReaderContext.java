@@ -98,7 +98,6 @@ public class FlinkSourceReaderContext implements SourceReader.Context {
             return new FlinkMetricContext(runtimeContext);
         } catch (Exception e) {
             log.warn("Failed to create metrics context", e);
-            // 返回一个空的MetricsContext而不是null，避免NPE
             return new FlinkMetricContext((MetricGroup) null);
         }
     }
@@ -125,14 +124,13 @@ public class FlinkSourceReaderContext implements SourceReader.Context {
     private static StreamingRuntimeContext getStreamingRuntimeContext(
             SourceReaderContext readerContext) {
         try {
-            // Flink 1.20中的SourceReaderContext结构可能有所不同
+            // SourceReaderContext structure may be different in Flink 1.20
             Field field = readerContext.getClass().getDeclaredField("operator");
             field.setAccessible(true);
             AbstractStreamOperator<?> operator =
                     (AbstractStreamOperator<?>) field.get(readerContext);
             return operator.getRuntimeContext();
         } catch (NoSuchFieldException e) {
-            // 如果找不到operator字段，尝试this$0字段（内部类引用外部类的字段名）
             try {
                 Field field = readerContext.getClass().getDeclaredField("this$0");
                 field.setAccessible(true);
