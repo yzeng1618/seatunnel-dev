@@ -33,7 +33,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** The implementation of MetricsContext for Flink 1.20. */
 @Slf4j
 public class FlinkMetricContext implements MetricsContext {
 
@@ -168,7 +167,6 @@ public class FlinkMetricContext implements MetricsContext {
                 || name.equals(MetricNames.SINK_WRITE_BYTES);
     }
 
-    /** Flink 计数器实现 */
     private static class FlinkCounter implements Counter {
         private final org.apache.flink.metrics.Counter flinkCounter;
 

@@ -37,8 +37,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class FlinkSinkWriter
         implements org.apache.flink.api.connector.sink2.SinkWriter<SeaTunnelRow> {
 
-    public static final Map<String, Long> GLOBAL_COUNTERS = new ConcurrentHashMap<>();
-
     private final SinkWriter<SeaTunnelRow, ?, ?> sinkWriter;
 
     private final org.apache.flink.metrics.Counter numRecordsSendCounter;
