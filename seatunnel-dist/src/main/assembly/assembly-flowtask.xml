@@ -66,18 +66,17 @@
             <useTransitiveDependencies>true</useTransitiveDependencies>
             <unpack>false</unpack>
             <includes>
-                <include>org.apache.seatunnel:connector-*:jar</include>
+                <include>org.apache.seatunnel:connector-cdc-*:jar</include>
                 <include>org.apache.seatunnel:connector-file-s3:jar</include>
+                <include>org.apache.seatunnel:connector-file-ftp:jar</include>
+                <include>org.apache.seatunnel:connector-file-sftp:jar</include>
+                <include>org.apache.seatunnel:connector-file-hadoop:jar</include>
+                <include>org.apache.seatunnel:connector-jdbc:jar</include>
+                <include>org.apache.seatunnel:connector-doris:jar</include>
+                <include>org.apache.seatunnel:connector-hive:jar</include>
+                <include>org.apache.seatunnel:connector-kafka:jar</include>
+                <include>org.apache.seatunnel:connector-iceberg:jar</include>
             </includes>
-            <excludes>
-                <exclude>org.apache.seatunnel:connector-common</exclude>
-                <!-- Don't exclude connector-http-base, because it contains SPI files -->
-                <exclude>org.apache.seatunnel:connector-file-base</exclude>
-                <exclude>org.apache.seatunnel:connector-file-base-hadoop</exclude>
-                <exclude>org.apache.seatunnel:connector-file-cos</exclude>
-                <exclude>org.apache.seatunnel:connector-file-oss</exclude>
-                <exclude>org.apache.seatunnel:connector-console</exclude>
-            </excludes>
             <outputDirectory>/connectors</outputDirectory>
             <scope>provided</scope>
         </dependencySet>
