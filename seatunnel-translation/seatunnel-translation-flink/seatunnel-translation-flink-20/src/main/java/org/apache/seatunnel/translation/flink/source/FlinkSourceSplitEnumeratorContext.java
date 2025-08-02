@@ -26,50 +26,41 @@ import org.apache.seatunnel.api.source.SourceSplit;
 import org.apache.seatunnel.api.source.SourceSplitEnumerator;
 
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
-import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
-import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.runtime.source.coordinator.SourceCoordinatorContext;
-
-import org.slf4j.MDC;
 
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * The implementation of {@link org.apache.seatunnel.api.source.SourceSplitEnumerator.Context} for
- * flink 1.20 engine.
+ * The implementation of {@link SourceSplitEnumerator.Context}, used for proxy all {@link
+ * SourceSplitEnumerator} in flink 1.20. Uses common module approach for JobId retrieval.
  *
- * @param <SplitT>
+ * @param <SplitT> The generic type of source split
  */
 @Slf4j
 public class FlinkSourceSplitEnumeratorContext<SplitT extends SourceSplit>
         implements SourceSplitEnumerator.Context<SplitT> {
 
-    private final SplitEnumeratorContext<SplitWrapper<SplitT>> enumContext;
+    private final SplitEnumeratorContext<
+                    org.apache.seatunnel.translation.flink.source.SplitWrapper<SplitT>>
+            enumContext;
     protected final EventListener eventListener;
 
     public FlinkSourceSplitEnumeratorContext(
-            SplitEnumeratorContext<SplitWrapper<SplitT>> enumContext) {
+            SplitEnumeratorContext<
+                            org.apache.seatunnel.translation.flink.source.SplitWrapper<SplitT>>
+                    enumContext) {
         this.enumContext = enumContext;
 
-        String jobId = null;
-        try {
-            jobId = getFlinkJobId(enumContext);
-        } catch (Exception e) {
-            log.warn("Failed to get Flink JobID, event processing may be limited", e);
-        }
-
-        if (jobId == null || jobId.equals("unknown-job-id")) {
-            jobId = "generated-" + UUID.randomUUID().toString();
-            log.info("Using generated JobID: {}", jobId);
-        }
-
+        String jobId = getFlinkJobId(enumContext);
         this.eventListener = new DefaultEventProcessor(jobId);
         log.info("FlinkSourceSplitEnumeratorContext initialized with JobID: {}", jobId);
     }
@@ -86,23 +77,24 @@ public class FlinkSourceSplitEnumeratorContext<SplitT extends SourceSplit>
 
     @Override
     public void assignSplit(int subtaskId, List<SplitT> splits) {
-        log.info("Assigning {} splits to subtask: {}", splits.size(), subtaskId);
         splits.forEach(
                 split -> {
-                    enumContext.assignSplit(new SplitWrapper<>(split), subtaskId);
+                    enumContext.assignSplit(
+                            new org.apache.seatunnel.translation.flink.source.SplitWrapper<>(split),
+                            subtaskId);
                 });
     }
 
     @Override
     public void signalNoMoreSplits(int subtask) {
-        log.info("Signaling no more splits to subtask: {}", subtask);
         enumContext.signalNoMoreSplits(subtask);
     }
 
     @Override
     public void sendEventToSourceReader(int subtaskId, SourceEvent event) {
-        log.debug("Sending event to source reader: {}", subtaskId);
-        enumContext.sendEventToSourceReader(subtaskId, new SourceEventWrapper(event));
+        enumContext.sendEventToSourceReader(
+                subtaskId,
+                new org.apache.seatunnel.translation.flink.source.SourceEventWrapper(event));
     }
 
     @Override
@@ -115,94 +107,101 @@ public class FlinkSourceSplitEnumeratorContext<SplitT extends SourceSplit>
         return eventListener;
     }
 
-    public SplitEnumeratorContext<SplitWrapper<SplitT>> getEnumContext() {
+    public SplitEnumeratorContext<
+                    org.apache.seatunnel.translation.flink.source.SplitWrapper<SplitT>>
+            getEnumContext() {
         return enumContext;
     }
 
     private static String getFlinkJobId(SplitEnumeratorContext enumContext) {
         try {
-            String jobId = getJobIdForFlink20(enumContext);
-            if (jobId != null && !jobId.equals("unknown-job-id")) {
-                log.info("Successfully retrieved JobID: {}", jobId);
+            String jobId = getJobIdUsingCommonApproach(enumContext);
+            if (jobId != null) {
                 return jobId;
             }
-            log.warn("Could not retrieve JobID using primary method");
-            return null;
+            return "generated-" + UUID.randomUUID().toString();
         } catch (Exception e) {
-            log.warn("Get flink job id failed: {}", e.getMessage());
-            return null;
+            log.warn("Failed to get JobId: {}", e.getMessage());
+            return "generated-" + UUID.randomUUID().toString();
         }
     }
 
-    private static String getJobIdForFlink20(SplitEnumeratorContext enumContext) {
+    private static String getJobIdUsingCommonApproach(SplitEnumeratorContext enumContext) {
         try {
-            if (enumContext instanceof SourceCoordinatorContext) {
-                SourceCoordinatorContext coordinatorContext =
-                        (SourceCoordinatorContext) enumContext;
+            if (!(enumContext instanceof SourceCoordinatorContext)) {
+                return null;
+            }
 
-                Field field =
-                        coordinatorContext
-                                .getClass()
-                                .getDeclaredField("operatorCoordinatorContext");
-                field.setAccessible(true);
-                OperatorCoordinator.Context operatorCoordinatorContext =
-                        (OperatorCoordinator.Context) field.get(coordinatorContext);
+            SourceCoordinatorContext coordinatorContext = (SourceCoordinatorContext) enumContext;
+            Field field =
+                    coordinatorContext.getClass().getDeclaredField("operatorCoordinatorContext");
+            field.setAccessible(true);
+            OperatorCoordinator.Context operatorCoordinatorContext =
+                    (OperatorCoordinator.Context) field.get(coordinatorContext);
 
-                try {
-                    OperatorID operatorID = operatorCoordinatorContext.getOperatorId();
-                    if (operatorID != null) {
-                        String operatorIdStr = operatorID.toString();
-                        if (operatorIdStr.contains("_")) {
-                            return operatorIdStr.split("_")[0];
-                        }
-                    }
-                } catch (Exception e) {
-                    log.debug("Failed to get JobID from OperatorID: {}", e.getMessage());
-                }
+            // Follow the exact common module logic
+            Field[] fields = operatorCoordinatorContext.getClass().getDeclaredFields();
+            Optional<Field> fieldOptional =
+                    Arrays.stream(fields)
+                            .filter(f -> f.getName().equals("globalFailureHandler"))
+                            .findFirst();
 
-                try {
-                    CheckpointCoordinator checkpointCoordinator =
-                            operatorCoordinatorContext.getCheckpointCoordinator();
-                    if (checkpointCoordinator != null) {
-                        Field jobField = checkpointCoordinator.getClass().getDeclaredField("job");
-                        jobField.setAccessible(true);
-                        Object job = jobField.get(checkpointCoordinator);
-                        if (job != null) {
-                            Method getJobIdMethod = job.getClass().getMethod("getJobID");
-                            Object jobId = getJobIdMethod.invoke(job);
-                            if (jobId != null) {
-                                return jobId.toString();
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    log.debug("Failed to get JobID from CheckpointCoordinator: {}", e.getMessage());
+            if (!fieldOptional.isPresent()) {
+                // RecreateOnResetOperatorCoordinator.QuiesceableContext case
+                fieldOptional =
+                        Arrays.stream(fields)
+                                .filter(f -> f.getName().equals("context"))
+                                .findFirst();
+
+                if (fieldOptional.isPresent()) {
+                    field = fieldOptional.get();
+                    field.setAccessible(true);
+                    operatorCoordinatorContext =
+                            (OperatorCoordinator.Context) field.get(operatorCoordinatorContext);
+                } else {
+                    return null;
                 }
             }
 
-            String threadName = Thread.currentThread().getName();
-            if (threadName.contains("jobmanager-job_")) {
-                int startIndex = threadName.indexOf("jobmanager-job_") + "jobmanager-job_".length();
-                int endIndex = threadName.indexOf("_", startIndex);
-                if (endIndex > startIndex) {
-                    return threadName.substring(startIndex, endIndex);
-                }
+            // OperatorCoordinatorHolder.LazyInitializedCoordinatorContext
+            field =
+                    Arrays.stream(operatorCoordinatorContext.getClass().getDeclaredFields())
+                            .filter(f -> f.getName().equals("globalFailureHandler"))
+                            .findFirst()
+                            .orElse(null);
+
+            if (field == null) {
+                return null;
             }
 
-            try {
-                String mdcJobId = MDC.get("flink.jobId");
-                if (mdcJobId != null && !mdcJobId.isEmpty()) {
-                    return mdcJobId;
-                }
-            } catch (Exception e) {
-                log.debug("Failed to get JobID from MDC: {}", e.getMessage());
+            field.setAccessible(true);
+            Object globalFailureHandler = field.get(operatorCoordinatorContext);
+
+            // SchedulerBase$xxx
+            Field[] handlerFields = globalFailureHandler.getClass().getDeclaredFields();
+            field =
+                    Arrays.stream(handlerFields)
+                            .filter(f -> f.getName().equals("arg$1"))
+                            .findFirst()
+                            .orElse(null);
+
+            if (field == null) {
+                return null;
             }
 
-            log.info("Could not determine JobID from context, using fallback value");
-            return "unknown-job-id";
+            field.setAccessible(true);
+            Object schedulerBase = field.get(globalFailureHandler);
+
+            Method getExecutionGraphMethod =
+                    schedulerBase.getClass().getMethod("getExecutionGraph");
+            Object executionGraph = getExecutionGraphMethod.invoke(schedulerBase);
+
+            Method getJobIDMethod = executionGraph.getClass().getMethod("getJobID");
+            Object jobID = getJobIDMethod.invoke(executionGraph);
+
+            return jobID.toString();
         } catch (Exception e) {
-            log.error("Failed to get JobID", e);
-            return "unknown-job-id";
+            return null;
         }
     }
 }

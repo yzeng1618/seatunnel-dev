@@ -91,8 +91,6 @@ public class FlinkJobMetricsSummary {
             return metrics;
         }
 
-        String jobId = jobExecutionResult.getJobID().toString();
-
         try {
             Map<String, Object> accumulatorResults = jobExecutionResult.getAllAccumulatorResults();
 

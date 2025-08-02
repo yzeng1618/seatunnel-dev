@@ -38,6 +38,7 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Flink 1.20 specific translation - higher priority -->
         <dependency>
             <groupId>org.apache.seatunnel</groupId>
             <artifactId>seatunnel-translation-flink-20</artifactId>
@@ -45,6 +46,7 @@
             <scope>compile</scope>
         </dependency>
 
+        <!-- Common translation - fallback for missing classes -->
         <dependency>
             <groupId>org.apache.seatunnel</groupId>
             <artifactId>seatunnel-translation-flink-common</artifactId>

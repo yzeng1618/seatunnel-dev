@@ -24,6 +24,7 @@ import org.apache.seatunnel.api.source.SeaTunnelSource;
 import org.apache.seatunnel.api.source.SourceSplit;
 import org.apache.seatunnel.api.source.SourceSplitEnumerator;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
+import org.apache.seatunnel.translation.flink.serialization.FlinkSimpleVersionedSerializer;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.Boundedness;
@@ -113,7 +114,7 @@ public class FlinkSource<SplitT extends SourceSplit, EnumStateT extends Serializ
     @Override
     public SimpleVersionedSerializer<EnumStateT> getEnumeratorCheckpointSerializer() {
         Serializer<EnumStateT> enumeratorStateSerializer = source.getEnumeratorStateSerializer();
-        return new EnumeratorStateSerializer<>(enumeratorStateSerializer);
+        return new FlinkSimpleVersionedSerializer<>(enumeratorStateSerializer);
     }
 
     @Override
