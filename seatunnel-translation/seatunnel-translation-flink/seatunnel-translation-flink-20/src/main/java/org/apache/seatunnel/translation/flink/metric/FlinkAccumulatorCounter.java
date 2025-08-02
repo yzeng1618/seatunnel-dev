@@ -46,12 +46,8 @@ public class FlinkAccumulatorCounter implements Counter {
         try {
             String accumulatorName = getStandardAccumulatorName(name);
             runtimeContext.addAccumulator(accumulatorName, accumulator);
-            log.info(
-                    "Successfully registered accumulator: {} (original name: {})",
-                    accumulatorName,
-                    name);
         } catch (Exception e) {
-            log.warn("Failed to register accumulator: {}, error: {}", name, e.getMessage());
+            log.warn("Failed to register accumulator: {}", name);
         }
     }
 
@@ -72,7 +68,7 @@ public class FlinkAccumulatorCounter implements Counter {
             localCount += n;
 
         } catch (Exception e) {
-            log.warn("Error incrementing counter {}: {}", name, e.getMessage());
+            log.warn("Error incrementing counter {}", name);
             localCount += n;
         }
     }
@@ -94,7 +90,7 @@ public class FlinkAccumulatorCounter implements Counter {
             localCount -= n;
 
         } catch (Exception e) {
-            log.warn("Error decrementing counter {}: {}", name, e.getMessage());
+            log.warn("Error decrementing counter {}", name);
             localCount -= n;
         }
     }
@@ -111,11 +107,9 @@ public class FlinkAccumulatorCounter implements Counter {
             accumulator.add(diff);
             localCount = n;
 
-            if (log.isDebugEnabled()) {
-                log.debug("Counter [{}] set to {}", name, n);
-            }
+            // Counter set successfully
         } catch (Exception e) {
-            log.warn("Error setting counter {}: {}", name, e.getMessage());
+            log.warn("Error setting counter {}", name);
             localCount = n;
         }
     }
@@ -152,15 +146,10 @@ public class FlinkAccumulatorCounter implements Counter {
         try {
             long accumulatorValue = accumulator.getLocalValue();
             if (accumulatorValue != localCount) {
-                log.info(
-                        "Syncing counter [{}]: accumulator={}, local={}",
-                        name,
-                        accumulatorValue,
-                        localCount);
                 localCount = accumulatorValue;
             }
         } catch (Exception e) {
-            log.warn("Failed to sync counter [{}]: {}", name, e.getMessage());
+            log.warn("Failed to sync counter [{}]", name);
         }
     }
 

@@ -21,7 +21,6 @@ import org.apache.seatunnel.api.common.metrics.Counter;
 import org.apache.seatunnel.api.common.metrics.Meter;
 import org.apache.seatunnel.api.common.metrics.MetricNames;
 import org.apache.seatunnel.api.common.metrics.MetricsContext;
-import org.apache.seatunnel.api.common.metrics.Unit;
 
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.metrics.MetricGroup;
@@ -31,7 +30,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
 public class FlinkMetricContext implements MetricsContext {
@@ -46,9 +44,6 @@ public class FlinkMetricContext implements MetricsContext {
         this.runtimeContext = runtimeContext;
         this.generalRuntimeContext = runtimeContext;
         this.metricGroup = runtimeContext != null ? runtimeContext.getMetricGroup() : null;
-        log.info(
-                "FlinkMetricContext initialized with StreamingRuntimeContext: {}",
-                runtimeContext != null ? "valid" : "null");
     }
 
     public FlinkMetricContext(RuntimeContext runtimeContext, MetricGroup metricGroup) {
@@ -58,19 +53,12 @@ public class FlinkMetricContext implements MetricsContext {
                         : null;
         this.generalRuntimeContext = runtimeContext;
         this.metricGroup = metricGroup;
-        log.info(
-                "FlinkMetricContext initialized with RuntimeContext: {}, MetricGroup: {}",
-                runtimeContext != null ? "valid" : "null",
-                metricGroup != null ? "valid" : "null");
     }
 
     public FlinkMetricContext(MetricGroup metricGroup) {
         this.metricGroup = metricGroup;
         this.generalRuntimeContext = null;
         this.runtimeContext = null;
-        log.info(
-                "FlinkMetricContext initialized with MetricGroup only: {}",
-                metricGroup != null ? "valid" : "null");
     }
 
     @Override
@@ -81,7 +69,6 @@ public class FlinkMetricContext implements MetricsContext {
         }
 
         if (metricGroup == null) {
-            log.warn("MetricGroup is null, returning no-op counter for: {}", name);
             Counter noOpCounter = new NoOpCounter();
             counters.put(name, noOpCounter);
             return noOpCounter;
@@ -98,22 +85,19 @@ public class FlinkMetricContext implements MetricsContext {
 
                     Counter counter = new FlinkAccumulatorCounter(counterName, fCounter, rContext);
                     counters.put(name, counter);
-                    log.info("Created counter with accumulator: {}", name);
                     return counter;
                 } catch (Exception e) {
                     log.warn(
                             "Failed to create accumulator for: {}, falling back to simple counter",
-                            name,
-                            e);
+                            name);
                 }
             }
 
             Counter counter = new FlinkCounter(flinkCounter);
             counters.put(name, counter);
-            log.debug("Created counter: {}", name);
             return counter;
         } catch (Exception e) {
-            log.warn("Failed to create counter: {}, returning no-op counter", name, e);
+            log.warn("Failed to create counter: {}, returning no-op counter", name);
             Counter noOpCounter = new NoOpCounter();
             counters.put(name, noOpCounter);
             return noOpCounter;
@@ -133,7 +117,6 @@ public class FlinkMetricContext implements MetricsContext {
         }
 
         if (metricGroup == null) {
-            log.warn("MetricGroup is null, returning no-op meter for: {}", name);
             Meter noOpMeter = new NoOpMeter();
             meters.put(name, noOpMeter);
             return noOpMeter;
@@ -142,13 +125,11 @@ public class FlinkMetricContext implements MetricsContext {
         try {
             org.apache.flink.metrics.Meter flinkMeter =
                     metricGroup.meter(name, new org.apache.flink.metrics.MeterView(60));
-
             Meter meter = new FlinkMeter(flinkMeter);
             meters.put(name, meter);
-            log.debug("Created meter: {}", name);
             return meter;
         } catch (Exception e) {
-            log.warn("Failed to create meter: {}, returning no-op meter", name, e);
+            log.warn("Failed to create meter: {}, returning no-op meter", name);
             Meter noOpMeter = new NoOpMeter();
             meters.put(name, noOpMeter);
             return noOpMeter;
@@ -165,157 +146,5 @@ public class FlinkMetricContext implements MetricsContext {
                 || name.equals(MetricNames.SOURCE_RECEIVED_BYTES)
                 || name.equals(MetricNames.SINK_WRITE_COUNT)
                 || name.equals(MetricNames.SINK_WRITE_BYTES);
-    }
-
-    private static class FlinkCounter implements Counter {
-        private final org.apache.flink.metrics.Counter flinkCounter;
-
-        FlinkCounter(org.apache.flink.metrics.Counter flinkCounter) {
-            this.flinkCounter = flinkCounter;
-        }
-
-        @Override
-        public void inc() {
-            flinkCounter.inc();
-        }
-
-        @Override
-        public void inc(long n) {
-            flinkCounter.inc(n);
-        }
-
-        @Override
-        public void dec() {}
-
-        @Override
-        public void dec(long n) {}
-
-        @Override
-        public void set(long n) {}
-
-        @Override
-        public long getCount() {
-            return flinkCounter.getCount();
-        }
-
-        @Override
-        public String name() {
-            return "";
-        }
-
-        @Override
-        public Unit unit() {
-            return null;
-        }
-    }
-
-    private static class NoOpCounter implements Counter {
-        private final AtomicLong count = new AtomicLong(0);
-
-        @Override
-        public void inc() {
-            count.incrementAndGet();
-        }
-
-        @Override
-        public void inc(long n) {
-            count.addAndGet(n);
-        }
-
-        @Override
-        public void dec() {}
-
-        @Override
-        public void dec(long n) {}
-
-        @Override
-        public void set(long n) {}
-
-        @Override
-        public long getCount() {
-            return count.get();
-        }
-
-        @Override
-        public String name() {
-            return "";
-        }
-
-        @Override
-        public Unit unit() {
-            return null;
-        }
-    }
-
-    private static class FlinkMeter implements Meter {
-        private final org.apache.flink.metrics.Meter flinkMeter;
-
-        FlinkMeter(org.apache.flink.metrics.Meter flinkMeter) {
-            this.flinkMeter = flinkMeter;
-        }
-
-        @Override
-        public void markEvent() {
-            flinkMeter.markEvent();
-        }
-
-        @Override
-        public void markEvent(long n) {
-            flinkMeter.markEvent(n);
-        }
-
-        @Override
-        public double getRate() {
-            return flinkMeter.getRate();
-        }
-
-        @Override
-        public long getCount() {
-            return 0;
-        }
-
-        @Override
-        public String name() {
-            return "";
-        }
-
-        @Override
-        public Unit unit() {
-            return null;
-        }
-    }
-
-    private static class NoOpMeter implements Meter {
-        private final AtomicLong count = new AtomicLong(0);
-
-        @Override
-        public void markEvent() {
-            count.incrementAndGet();
-        }
-
-        @Override
-        public void markEvent(long n) {
-            count.addAndGet(n);
-        }
-
-        @Override
-        public double getRate() {
-            return 0;
-        }
-
-        @Override
-        public long getCount() {
-            return 0;
-        }
-
-        @Override
-        public String name() {
-            return "";
-        }
-
-        @Override
-        public Unit unit() {
-            return null;
-        }
     }
 }
