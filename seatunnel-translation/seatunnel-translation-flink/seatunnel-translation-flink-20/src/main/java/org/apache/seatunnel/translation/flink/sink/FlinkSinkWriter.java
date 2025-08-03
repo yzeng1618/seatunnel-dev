@@ -62,7 +62,6 @@ public class FlinkSinkWriter
     @Override
     public void flush(boolean endOfInput) throws IOException, InterruptedException {
         if (endOfInput) {
-            // 使用同步块确保只关闭一次
             synchronized (this) {
                 if (!closed) {
                     sinkWriter.close();
@@ -74,7 +73,6 @@ public class FlinkSinkWriter
 
     @Override
     public void close() throws Exception {
-        // 使用同步块确保只关闭一次
         synchronized (this) {
             if (!closed) {
                 sinkWriter.close();
