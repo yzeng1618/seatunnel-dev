@@ -70,25 +70,4 @@ public class Flink20Container extends AbstractTestFlinkContainer {
     protected String getConnectorNamePrefix() {
         return "connector-";
     }
-
-    @Override
-    protected List<String> getFlinkProperties() {
-        // Flink 1.20 specific properties
-        return Arrays.asList(
-                "jobmanager.rpc.address: jobmanager",
-                "taskmanager.numberOfTaskSlots: 10",
-                "parallelism.default: 4",
-                "env.java.opts: -Doracle.jdbc.timezoneAsRegion=false",
-                // Flink 1.20 specific configurations
-                "execution.checkpointing.mode: EXACTLY_ONCE",
-                "execution.checkpointing.interval: 10s",
-                "execution.checkpointing.timeout: 600s",
-                // Enable Pekko for Flink 1.20 (replaces Akka)
-                "pekko.ask.timeout: 60s",
-                "pekko.lookup.timeout: 60s",
-                // Memory configurations for Flink 1.20
-                "jobmanager.memory.process.size: 1600m",
-                "taskmanager.memory.process.size: 1728m",
-                "taskmanager.memory.flink.size: 1280m");
-    }
 }
