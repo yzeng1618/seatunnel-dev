@@ -24,8 +24,6 @@ import com.google.auto.service.AutoService;
 import lombok.NoArgsConstructor;
 
 import java.io.File;
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * This class is the base class of FlinkEnvironment test for new seatunnel connector API. The before
