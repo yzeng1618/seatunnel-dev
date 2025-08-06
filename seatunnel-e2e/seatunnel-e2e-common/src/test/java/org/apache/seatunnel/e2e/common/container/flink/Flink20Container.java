@@ -43,7 +43,7 @@ public class Flink20Container extends AbstractTestFlinkContainer {
 
     @Override
     protected String getDockerImage() {
-        return "tyrantlucifer/flink:1.20.1-scala_2.12_hadoop27";
+        return "tyrantlucifer/flink:1.20.2-scala_2.12_hadoop27";
     }
 
     @Override
