@@ -76,6 +76,7 @@ public class Flink20Container extends AbstractTestFlinkContainer {
         // Flink 1.20 uses new YAML parser that requires valid YAML document format
         // We need to return a single YAML document string instead of individual properties
         return Arrays.asList(
+                "---",
                 "# Flink 1.20 Configuration",
                 "jobmanager:",
                 "  rpc:",
