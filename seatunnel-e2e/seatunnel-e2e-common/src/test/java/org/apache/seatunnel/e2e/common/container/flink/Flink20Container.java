@@ -73,20 +73,11 @@ public class Flink20Container extends AbstractTestFlinkContainer {
 
     @Override
     protected List<String> getFlinkProperties() {
-        // Flink 1.20 uses new YAML parser that requires valid YAML document format
-        // We need to return a single YAML document string instead of individual properties
+        // Flink 1.20 Docker image may still expect key-value format for FLINK_PROPERTIES
         return Arrays.asList(
-                "---",
-                "# Flink 1.20 Configuration",
-                "jobmanager:",
-                "  rpc:",
-                "    address: jobmanager",
-                "taskmanager:",
-                "  numberOfTaskSlots: 10",
-                "parallelism:",
-                "  default: 4",
-                "env:",
-                "  java:",
-                "    opts: \"-Doracle.jdbc.timezoneAsRegion=false\"");
+                "jobmanager.rpc.address: jobmanager",
+                "taskmanager.numberOfTaskSlots: 10",
+                "parallelism.default: 4",
+                "env.java.opts: \"-Doracle.jdbc.timezoneAsRegion=false\"");
     }
 }
