@@ -24,6 +24,8 @@ import com.google.auto.service.AutoService;
 import lombok.NoArgsConstructor;
 
 import java.io.File;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * This class is the base class of FlinkEnvironment test for new seatunnel connector API. The before
@@ -67,5 +69,16 @@ public class Flink20Container extends AbstractTestFlinkContainer {
     @Override
     protected String getConnectorNamePrefix() {
         return "connector-";
+    }
+
+    @Override
+    protected List<String> getFlinkProperties() {
+        // Flink 1.20 requires different property format (= instead of :)
+        // to avoid YAML parsing issues with the new SnakeYAML engine
+        return Arrays.asList(
+                "jobmanager.rpc.address=jobmanager",
+                "taskmanager.numberOfTaskSlots=10",
+                "parallelism.default=4",
+                "env.java.opts=-Doracle.jdbc.timezoneAsRegion=false");
     }
 }
