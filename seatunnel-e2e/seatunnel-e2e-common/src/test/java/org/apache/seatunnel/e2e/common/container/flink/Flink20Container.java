@@ -76,10 +76,9 @@ public class Flink20Container extends AbstractTestFlinkContainer {
         // Flink 1.20.1 YAML parser requires document start marker
         // Keep it simple but add necessary Java 17 compatibility options
         return Arrays.asList(
-                "---",
                 "jobmanager.rpc.address: jobmanager",
                 "taskmanager.numberOfTaskSlots: 10",
                 "parallelism.default: 4",
-                "env.java.opts: --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED -Doracle.jdbc.timezoneAsRegion=false");
+                "env.java.opts.all: \"--add-exports=java.base/sun.net.util=ALL-UNNAMED --add-exports=java.rmi/sun.rmi.registry=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED -Doracle.jdbc.timezoneAsRegion=false\"");
     }
 }
