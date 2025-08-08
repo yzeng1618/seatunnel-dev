@@ -73,11 +73,23 @@ public class Flink20Container extends AbstractTestFlinkContainer {
 
     @Override
     protected List<String> getFlinkProperties() {
-        // Flink 1.20 Docker image may still expect key-value format for FLINK_PROPERTIES
+        // Flink 1.20 compatibility: Use key-value format that Docker entrypoint can handle
+        // The Docker container will convert this to proper config.yaml format internally
         return Arrays.asList(
                 "jobmanager.rpc.address: jobmanager",
                 "taskmanager.numberOfTaskSlots: 10",
                 "parallelism.default: 4",
-                "env.java.opts: \"-Doracle.jdbc.timezoneAsRegion=false\"");
+                "env.java.opts: -Doracle.jdbc.timezoneAsRegion=false",
+                // Memory configurations for Flink 1.20
+                "jobmanager.memory.process.size: 1600m",
+                "taskmanager.memory.process.size: 1728m",
+                "taskmanager.memory.flink.size: 1280m",
+                // Pekko configuration (replaces Akka in Flink 1.20)
+                "pekko.ask.timeout: 60s",
+                "pekko.lookup.timeout: 60s",
+                // Execution configuration for Flink 1.20
+                "execution.checkpointing.mode: EXACTLY_ONCE",
+                "execution.checkpointing.interval: 10s",
+                "execution.checkpointing.timeout: 600s");
     }
 }
