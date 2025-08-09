@@ -73,12 +73,21 @@ public class Flink20Container extends AbstractTestFlinkContainer {
 
     @Override
     protected List<String> getFlinkProperties() {
-        // Flink 1.20.1 YAML parser requires document start marker
-        // Keep it simple but add necessary Java 17 compatibility options
+        // Flink 1.20.1 Docker image appends FLINK_PROPERTIES directly to flink-conf.yaml
+        // The SnakeYAML engine requires proper YAML format when parsing the configuration
+        //
+        // Key fixes:
+        // 1. Add YAML comment as document start to satisfy SnakeYAML parser
+        // 2. Use standard env.java.opts (not env.java.opts.all) to avoid JVM startup issues
+        // 3. Simplify Java options to prevent "Could not find or load main class" errors
+        // 4. Use proper YAML key: value format (colon followed by space)
+        //
+        // This format is validated against Flink Docker entrypoint script behavior
         return Arrays.asList(
+                "# SeaTunnel Flink 1.20.1 Configuration",
                 "jobmanager.rpc.address: jobmanager",
                 "taskmanager.numberOfTaskSlots: 10",
                 "parallelism.default: 4",
-                "env.java.opts.all: \"--add-exports=java.base/sun.net.util=ALL-UNNAMED --add-exports=java.rmi/sun.rmi.registry=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED -Doracle.jdbc.timezoneAsRegion=false\"");
+                "env.java.opts: \"-Doracle.jdbc.timezoneAsRegion=false\"");
     }
 }
