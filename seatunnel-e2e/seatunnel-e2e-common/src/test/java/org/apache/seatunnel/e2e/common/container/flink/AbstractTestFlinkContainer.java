@@ -139,23 +139,23 @@ public abstract class AbstractTestFlinkContainer extends AbstractTestContainer {
         return DEFAULT_FLINK_PROPERTIES;
     }
 
-    /**
-     * Debug method to inspect container configuration files after startup
-     */
+    /** Debug method to inspect container configuration files after startup */
     protected void debugContainerConfiguration(GenericContainer<?> container) {
         try {
             System.out.println("=== Container Configuration Debug ===");
 
             // Check if container is running
             if (!container.isRunning()) {
-                System.out.println("WARNING: Container is not running, cannot inspect configuration");
+                System.out.println(
+                        "WARNING: Container is not running, cannot inspect configuration");
                 return;
             }
 
             // List configuration directory contents
             System.out.println("Configuration directory contents:");
             try {
-                Container.ExecResult result = container.execInContainer("ls", "-la", "/opt/flink/conf/");
+                Container.ExecResult result =
+                        container.execInContainer("ls", "-la", "/opt/flink/conf/");
                 System.out.println("ls -la /opt/flink/conf/:");
                 System.out.println(result.getStdout());
                 if (!result.getStderr().isEmpty()) {
@@ -169,14 +169,16 @@ public abstract class AbstractTestFlinkContainer extends AbstractTestContainer {
             String[] configFiles = {"flink-conf.yaml", "config.yaml", "flink-config.yaml"};
             for (String configFile : configFiles) {
                 try {
-                    Container.ExecResult result = container.execInContainer("cat", "/opt/flink/conf/" + configFile);
+                    Container.ExecResult result =
+                            container.execInContainer("cat", "/opt/flink/conf/" + configFile);
                     if (result.getExitCode() == 0) {
                         System.out.println("=== Content of /opt/flink/conf/" + configFile + " ===");
                         System.out.println(result.getStdout());
                         System.out.println("=== End of " + configFile + " ===");
                     }
                 } catch (Exception e) {
-                    System.out.println("File /opt/flink/conf/" + configFile + " not found or not readable");
+                    System.out.println(
+                            "File /opt/flink/conf/" + configFile + " not found or not readable");
                 }
             }
 

@@ -73,25 +73,26 @@ public class Flink20Container extends AbstractTestFlinkContainer {
 
     @Override
     protected List<String> getFlinkProperties() {
-        List<String> properties = Arrays.asList(
-                "---",  // YAML document start required by SnakeYAML engine
-                "# SeaTunnel Flink 1.20.1 Complete Configuration",
-                "# This replaces the default config to ensure YAML compliance",
-                "",
-                "# Memory Configuration",
-                "jobmanager.memory.process.size: 1600m",
-                "taskmanager.memory.process.size: 1728m",
-                "taskmanager.memory.flink.size: 1280m",
-                "",
-                "# Network Configuration",
-                "jobmanager.rpc.address: jobmanager",
-                "taskmanager.numberOfTaskSlots: 10",
-                "",
-                "# Execution Configuration",
-                "parallelism.default: 4",
-                "",
-                "# JVM Configuration",
-                "env.java.opts: \"-Doracle.jdbc.timezoneAsRegion=false\"");
+        List<String> properties =
+                Arrays.asList(
+                        "---", // YAML document start required by SnakeYAML engine
+                        "# SeaTunnel Flink 1.20.1 Complete Configuration",
+                        "# This replaces the default config to ensure YAML compliance",
+                        "",
+                        "# Memory Configuration",
+                        "jobmanager.memory.process.size: 1600m",
+                        "taskmanager.memory.process.size: 1728m",
+                        "taskmanager.memory.flink.size: 1280m",
+                        "",
+                        "# Network Configuration",
+                        "jobmanager.rpc.address: jobmanager",
+                        "taskmanager.numberOfTaskSlots: 10",
+                        "",
+                        "# Execution Configuration",
+                        "parallelism.default: 4",
+                        "",
+                        "# JVM Configuration",
+                        "env.java.opts: \"-Doracle.jdbc.timezoneAsRegion=false\"");
 
         // Debug logging to help diagnose YAML parsing issues
         System.out.println("=== Flink20Container Debug Information ===");
@@ -110,5 +111,4 @@ public class Flink20Container extends AbstractTestFlinkContainer {
 
         return properties;
     }
-
 }
