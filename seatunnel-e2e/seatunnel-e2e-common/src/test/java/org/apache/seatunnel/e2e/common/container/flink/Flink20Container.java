@@ -73,21 +73,42 @@ public class Flink20Container extends AbstractTestFlinkContainer {
 
     @Override
     protected List<String> getFlinkProperties() {
-        // Flink 1.20.1 Docker image appends FLINK_PROPERTIES directly to flink-conf.yaml
-        // The SnakeYAML engine requires proper YAML format when parsing the configuration
-        //
-        // Key fixes:
-        // 1. Add YAML comment as document start to satisfy SnakeYAML parser
-        // 2. Use standard env.java.opts (not env.java.opts.all) to avoid JVM startup issues
-        // 3. Simplify Java options to prevent "Could not find or load main class" errors
-        // 4. Use proper YAML key: value format (colon followed by space)
-        //
-        // This format is validated against Flink Docker entrypoint script behavior
-        return Arrays.asList(
-                "# SeaTunnel Flink 1.20.1 Configuration",
+        List<String> properties = Arrays.asList(
+                "---",  // YAML document start required by SnakeYAML engine
+                "# SeaTunnel Flink 1.20.1 Complete Configuration",
+                "# This replaces the default config to ensure YAML compliance",
+                "",
+                "# Memory Configuration",
+                "jobmanager.memory.process.size: 1600m",
+                "taskmanager.memory.process.size: 1728m",
+                "taskmanager.memory.flink.size: 1280m",
+                "",
+                "# Network Configuration",
                 "jobmanager.rpc.address: jobmanager",
                 "taskmanager.numberOfTaskSlots: 10",
+                "",
+                "# Execution Configuration",
                 "parallelism.default: 4",
+                "",
+                "# JVM Configuration",
                 "env.java.opts: \"-Doracle.jdbc.timezoneAsRegion=false\"");
+
+        // Debug logging to help diagnose YAML parsing issues
+        System.out.println("=== Flink20Container Debug Information ===");
+        System.out.println("Docker Image: " + getDockerImage());
+        System.out.println("Generated FLINK_PROPERTIES (will be joined with \\n):");
+        for (int i = 0; i < properties.size(); i++) {
+            System.out.println("  Line " + (i + 1) + ": [" + properties.get(i) + "]");
+        }
+        String joinedProperties = String.join("\n", properties);
+        System.out.println("Final FLINK_PROPERTIES environment variable content:");
+        System.out.println("--- START FLINK_PROPERTIES ---");
+        System.out.println(joinedProperties);
+        System.out.println("--- END FLINK_PROPERTIES ---");
+        System.out.println("Length: " + joinedProperties.length() + " characters");
+        System.out.println("=== End Debug Information ===");
+
+        return properties;
     }
+
 }

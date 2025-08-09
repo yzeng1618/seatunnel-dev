@@ -75,6 +75,18 @@ public abstract class AbstractTestFlinkContainer extends AbstractTestContainer {
     public void startUp() throws Exception {
         final String dockerImage = getDockerImage();
         final String properties = String.join("\n", getFlinkProperties());
+
+        // Debug logging for container startup
+        System.out.println("=== AbstractTestFlinkContainer Startup Debug ===");
+        System.out.println("Docker Image: " + dockerImage);
+        System.out.println("FLINK_PROPERTIES environment variable (as passed to container):");
+        System.out.println("--- START ENV VAR ---");
+        System.out.println(properties);
+        System.out.println("--- END ENV VAR ---");
+        System.out.println("Properties length: " + properties.length() + " characters");
+        System.out.println("Properties lines count: " + properties.split("\n").length);
+        System.out.println("=== End Startup Debug ===");
+
         jobManager =
                 new GenericContainer<>(dockerImage)
                         .withCommand("jobmanager")
@@ -114,6 +126,10 @@ public abstract class AbstractTestFlinkContainer extends AbstractTestContainer {
                         .withFileSystemBind(MOUNTS_PATH, MOUNTS_PATH, BindMode.READ_WRITE);
 
         Startables.deepStart(Stream.of(jobManager)).join();
+
+        // Debug: Check container configuration after startup
+        debugContainerConfiguration(jobManager);
+
         Startables.deepStart(Stream.of(taskManager)).join();
         // execute extra commands
         executeExtraCommands(jobManager);
@@ -121,6 +137,69 @@ public abstract class AbstractTestFlinkContainer extends AbstractTestContainer {
 
     protected List<String> getFlinkProperties() {
         return DEFAULT_FLINK_PROPERTIES;
+    }
+
+    /**
+     * Debug method to inspect container configuration files after startup
+     */
+    protected void debugContainerConfiguration(GenericContainer<?> container) {
+        try {
+            System.out.println("=== Container Configuration Debug ===");
+
+            // Check if container is running
+            if (!container.isRunning()) {
+                System.out.println("WARNING: Container is not running, cannot inspect configuration");
+                return;
+            }
+
+            // List configuration directory contents
+            System.out.println("Configuration directory contents:");
+            try {
+                Container.ExecResult result = container.execInContainer("ls", "-la", "/opt/flink/conf/");
+                System.out.println("ls -la /opt/flink/conf/:");
+                System.out.println(result.getStdout());
+                if (!result.getStderr().isEmpty()) {
+                    System.out.println("stderr: " + result.getStderr());
+                }
+            } catch (Exception e) {
+                System.out.println("Failed to list /opt/flink/conf/: " + e.getMessage());
+            }
+
+            // Check for different possible config file names
+            String[] configFiles = {"flink-conf.yaml", "config.yaml", "flink-config.yaml"};
+            for (String configFile : configFiles) {
+                try {
+                    Container.ExecResult result = container.execInContainer("cat", "/opt/flink/conf/" + configFile);
+                    if (result.getExitCode() == 0) {
+                        System.out.println("=== Content of /opt/flink/conf/" + configFile + " ===");
+                        System.out.println(result.getStdout());
+                        System.out.println("=== End of " + configFile + " ===");
+                    }
+                } catch (Exception e) {
+                    System.out.println("File /opt/flink/conf/" + configFile + " not found or not readable");
+                }
+            }
+
+            // Check environment variables
+            try {
+                Container.ExecResult result = container.execInContainer("env");
+                System.out.println("=== Environment Variables ===");
+                String[] envLines = result.getStdout().split("\n");
+                for (String line : envLines) {
+                    if (line.contains("FLINK") || line.contains("JAVA") || line.contains("JVM")) {
+                        System.out.println(line);
+                    }
+                }
+                System.out.println("=== End Environment Variables ===");
+            } catch (Exception e) {
+                System.out.println("Failed to get environment variables: " + e.getMessage());
+            }
+
+            System.out.println("=== End Container Configuration Debug ===");
+        } catch (Exception e) {
+            System.out.println("Error during container configuration debug: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     @Override
