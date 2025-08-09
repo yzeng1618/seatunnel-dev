@@ -73,11 +73,18 @@ public class Flink20Container extends AbstractTestFlinkContainer {
 
     @Override
     protected List<String> getFlinkProperties() {
+        // CRITICAL: For Flink 1.20.1, we need to completely replace the config file
+        // instead of appending to it, because SnakeYAML requires the entire file
+        // to start with a YAML document marker.
+        //
+        // We use a special marker that will be processed by our custom startup script
+
         List<String> properties =
                 Arrays.asList(
+                        "# SEATUNNEL_FLINK20_CONFIG_REPLACE_START",
                         "---", // YAML document start required by SnakeYAML engine
                         "# SeaTunnel Flink 1.20.1 Complete Configuration",
-                        "# This replaces the default config to ensure YAML compliance",
+                        "# Generated to ensure YAML compliance with SnakeYAML engine",
                         "",
                         "# Memory Configuration",
                         "jobmanager.memory.process.size: 1600m",
@@ -92,23 +99,145 @@ public class Flink20Container extends AbstractTestFlinkContainer {
                         "parallelism.default: 4",
                         "",
                         "# JVM Configuration",
-                        "env.java.opts: \"-Doracle.jdbc.timezoneAsRegion=false\"");
+                        "env.java.opts: \"-Doracle.jdbc.timezoneAsRegion=false\"",
+                        "# SEATUNNEL_FLINK20_CONFIG_REPLACE_END");
 
-        // Debug logging to help diagnose YAML parsing issues
+        // Debug logging
         System.out.println("=== Flink20Container Debug Information ===");
         System.out.println("Docker Image: " + getDockerImage());
-        System.out.println("Generated FLINK_PROPERTIES (will be joined with \\n):");
-        for (int i = 0; i < properties.size(); i++) {
-            System.out.println("  Line " + (i + 1) + ": [" + properties.get(i) + "]");
-        }
+        System.out.println(
+                "Using config replacement mode for Flink 1.20.1 SnakeYAML compatibility");
         String joinedProperties = String.join("\n", properties);
         System.out.println("Final FLINK_PROPERTIES environment variable content:");
         System.out.println("--- START FLINK_PROPERTIES ---");
         System.out.println(joinedProperties);
         System.out.println("--- END FLINK_PROPERTIES ---");
-        System.out.println("Length: " + joinedProperties.length() + " characters");
         System.out.println("=== End Debug Information ===");
 
         return properties;
+    }
+
+    @Override
+    public void startUp() throws Exception {
+        // Override startup to handle Flink 1.20.1 specific YAML configuration requirements
+        final String dockerImage = getDockerImage();
+        final String properties = String.join("\n", getFlinkProperties());
+
+        System.out.println("=== Flink20Container Custom Startup ===");
+        System.out.println("Starting Flink 1.20.1 with custom configuration handling");
+
+        // Create custom startup script for proper YAML handling
+        String customStartupScript = createFlink20StartupScript();
+
+        jobManager =
+                new org.testcontainers.containers.GenericContainer<>(dockerImage)
+                        .withCommand(
+                                "sh",
+                                "-c",
+                                customStartupScript + " && exec /docker-entrypoint.sh jobmanager")
+                        .withNetwork(NETWORK)
+                        .withNetworkAliases("jobmanager")
+                        .withExposedPorts()
+                        .withEnv("FLINK_PROPERTIES", properties)
+                        .withLogConsumer(
+                                new org.testcontainers.containers.output.Slf4jLogConsumer(
+                                        org.testcontainers.utility.DockerLoggerFactory.getLogger(
+                                                dockerImage + ":jobmanager")))
+                        .waitingFor(
+                                new org.testcontainers.containers.wait.strategy
+                                                .LogMessageWaitStrategy()
+                                        .withRegEx(".*Starting the resource manager.*")
+                                        .withStartupTimeout(java.time.Duration.ofMinutes(2)))
+                        .withFileSystemBind(
+                                MOUNTS_PATH,
+                                MOUNTS_PATH,
+                                org.testcontainers.containers.BindMode.READ_WRITE);
+
+        copySeaTunnelStarterToContainer(jobManager);
+        copySeaTunnelStarterLoggingToContainer(jobManager);
+
+        jobManager.setPortBindings(java.util.Arrays.asList(String.format("%s:%s", 8081, 8081)));
+
+        taskManager =
+                new org.testcontainers.containers.GenericContainer<>(dockerImage)
+                        .withCommand(
+                                "sh",
+                                "-c",
+                                customStartupScript + " && exec /docker-entrypoint.sh taskmanager")
+                        .withNetwork(NETWORK)
+                        .withNetworkAliases("taskmanager")
+                        .withEnv("FLINK_PROPERTIES", properties)
+                        .dependsOn(jobManager)
+                        .withLogConsumer(
+                                new org.testcontainers.containers.output.Slf4jLogConsumer(
+                                        org.testcontainers.utility.DockerLoggerFactory.getLogger(
+                                                dockerImage + ":taskmanager")))
+                        .waitingFor(
+                                new org.testcontainers.containers.wait.strategy
+                                                .LogMessageWaitStrategy()
+                                        .withRegEx(
+                                                ".*Successful registration at resource manager.*")
+                                        .withStartupTimeout(java.time.Duration.ofMinutes(2)))
+                        .withFileSystemBind(
+                                MOUNTS_PATH,
+                                MOUNTS_PATH,
+                                org.testcontainers.containers.BindMode.READ_WRITE);
+
+        org.testcontainers.lifecycle.Startables.deepStart(java.util.stream.Stream.of(jobManager))
+                .join();
+
+        // Debug: Check container configuration after startup
+        debugContainerConfiguration(jobManager);
+
+        org.testcontainers.lifecycle.Startables.deepStart(java.util.stream.Stream.of(taskManager))
+                .join();
+
+        // execute extra commands
+        executeExtraCommands(jobManager);
+
+        System.out.println("=== Flink20Container Startup Complete ===");
+    }
+
+    private String createFlink20StartupScript() {
+        // Create a script that properly handles YAML configuration replacement
+        return "#!/bin/bash\n"
+                + "set -e\n"
+                + "echo 'SeaTunnel Flink 1.20.1 custom startup script'\n"
+                + "echo 'Handling YAML configuration for SnakeYAML compatibility'\n"
+                + "\n"
+                + "CONF_DIR=\"${FLINK_HOME}/conf\"\n"
+                + "CONF_FILE=\"${CONF_DIR}/flink-conf.yaml\"\n"
+                + "CONFIG_FILE=\"${CONF_DIR}/config.yaml\"\n"
+                + "\n"
+                + "echo 'Original configuration directory:'\n"
+                + "ls -la \"${CONF_DIR}\"\n"
+                + "\n"
+                + "if [ -n \"${FLINK_PROPERTIES}\" ]; then\n"
+                + "  if echo \"${FLINK_PROPERTIES}\" | grep -q 'SEATUNNEL_FLINK20_CONFIG_REPLACE_START'; then\n"
+                + "    echo 'Replacing configuration files with YAML-compliant content'\n"
+                + "    \n"
+                + "    # Extract the actual config content (between markers)\n"
+                + "    CONFIG_CONTENT=$(echo \"${FLINK_PROPERTIES}\" | sed -n '/SEATUNNEL_FLINK20_CONFIG_REPLACE_START/,/SEATUNNEL_FLINK20_CONFIG_REPLACE_END/p' | sed '1d;$d')\n"
+                + "    \n"
+                + "    # Replace both possible config files\n"
+                + "    echo \"${CONFIG_CONTENT}\" > \"${CONF_FILE}\"\n"
+                + "    echo \"${CONFIG_CONTENT}\" > \"${CONFIG_FILE}\"\n"
+                + "    \n"
+                + "    echo 'Configuration files replaced successfully'\n"
+                + "  else\n"
+                + "    echo 'Using standard append mode'\n"
+                + "    echo \"${FLINK_PROPERTIES}\" >> \"${CONF_FILE}\"\n"
+                + "    [ -f \"${CONFIG_FILE}\" ] && echo \"${FLINK_PROPERTIES}\" >> \"${CONFIG_FILE}\"\n"
+                + "  fi\n"
+                + "else\n"
+                + "  echo 'No FLINK_PROPERTIES provided'\n"
+                + "fi\n"
+                + "\n"
+                + "echo 'Final configuration files:'\n"
+                + "echo '=== flink-conf.yaml ==='\n"
+                + "cat \"${CONF_FILE}\" 2>/dev/null || echo 'flink-conf.yaml not found'\n"
+                + "echo '=== config.yaml ==='\n"
+                + "cat \"${CONFIG_FILE}\" 2>/dev/null || echo 'config.yaml not found'\n"
+                + "echo '=== End configuration files ==='\n";
     }
 }
