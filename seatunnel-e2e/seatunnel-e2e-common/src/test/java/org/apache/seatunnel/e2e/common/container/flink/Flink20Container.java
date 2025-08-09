@@ -126,15 +126,9 @@ public class Flink20Container extends AbstractTestFlinkContainer {
         System.out.println("=== Flink20Container Custom Startup ===");
         System.out.println("Starting Flink 1.20.1 with custom configuration handling");
 
-        // Create custom startup script for proper YAML handling
-        String customStartupScript = createFlink20StartupScript();
-
         jobManager =
                 new org.testcontainers.containers.GenericContainer<>(dockerImage)
-                        .withCommand(
-                                "sh",
-                                "-c",
-                                customStartupScript + " && exec /docker-entrypoint.sh jobmanager")
+                        .withCommand("sh", "-c", createJobManagerStartupCommand())
                         .withNetwork(NETWORK)
                         .withNetworkAliases("jobmanager")
                         .withExposedPorts()
@@ -160,10 +154,7 @@ public class Flink20Container extends AbstractTestFlinkContainer {
 
         taskManager =
                 new org.testcontainers.containers.GenericContainer<>(dockerImage)
-                        .withCommand(
-                                "sh",
-                                "-c",
-                                customStartupScript + " && exec /docker-entrypoint.sh taskmanager")
+                        .withCommand("sh", "-c", createTaskManagerStartupCommand())
                         .withNetwork(NETWORK)
                         .withNetworkAliases("taskmanager")
                         .withEnv("FLINK_PROPERTIES", properties)
@@ -196,6 +187,22 @@ public class Flink20Container extends AbstractTestFlinkContainer {
         executeExtraCommands(jobManager);
 
         System.out.println("=== Flink20Container Startup Complete ===");
+    }
+
+    private String createJobManagerStartupCommand() {
+        // Create a complete startup command for JobManager that avoids shell operator issues
+        return createFlink20StartupScript()
+                + "\n"
+                + "echo 'Starting Flink JobManager...'\n"
+                + "exec /docker-entrypoint.sh jobmanager\n";
+    }
+
+    private String createTaskManagerStartupCommand() {
+        // Create a complete startup command for TaskManager that avoids shell operator issues
+        return createFlink20StartupScript()
+                + "\n"
+                + "echo 'Starting Flink TaskManager...'\n"
+                + "exec /docker-entrypoint.sh taskmanager\n";
     }
 
     private String createFlink20StartupScript() {
