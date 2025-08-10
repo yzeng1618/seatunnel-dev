@@ -99,7 +99,7 @@ public class Flink20Container extends AbstractTestFlinkContainer {
                         "parallelism.default: 4",
                         "",
                         "# JVM Configuration",
-                        "env.java.opts: '-Doracle.jdbc.timezoneAsRegion=false'",
+                        "env.java.opts: -Doracle.jdbc.timezoneAsRegion=false",
                         "# SEATUNNEL_FLINK20_CONFIG_REPLACE_END");
 
         // Debug logging
