@@ -99,7 +99,7 @@ public class Flink20Container extends AbstractTestFlinkContainer {
                         "parallelism.default: 4",
                         "",
                         "# JVM Configuration",
-                        "env.java.opts: \"-Doracle.jdbc.timezoneAsRegion=false\"",
+                        "env.java.opts: '-Doracle.jdbc.timezoneAsRegion=false'",
                         "# SEATUNNEL_FLINK20_CONFIG_REPLACE_END");
 
         // Debug logging
@@ -224,11 +224,11 @@ public class Flink20Container extends AbstractTestFlinkContainer {
                 + "    echo 'Replacing configuration files with YAML-compliant content'\n"
                 + "    \n"
                 + "    # Extract the actual config content (between markers)\n"
-                + "    CONFIG_CONTENT=$(echo \"${FLINK_PROPERTIES}\" | sed -n '/SEATUNNEL_FLINK20_CONFIG_REPLACE_START/,/SEATUNNEL_FLINK20_CONFIG_REPLACE_END/p' | sed '1d;$d')\n"
+                + "    # Use printf to handle special characters and quotes properly\n"
+                + "    printf '%s\\n' \"${FLINK_PROPERTIES}\" | sed -n '/SEATUNNEL_FLINK20_CONFIG_REPLACE_START/,/SEATUNNEL_FLINK20_CONFIG_REPLACE_END/p' | sed '1d;$d' > \"${CONF_FILE}\"\n"
                 + "    \n"
-                + "    # Replace both possible config files\n"
-                + "    echo \"${CONFIG_CONTENT}\" > \"${CONF_FILE}\"\n"
-                + "    echo \"${CONFIG_CONTENT}\" > \"${CONFIG_FILE}\"\n"
+                + "    # Copy to config.yaml as well\n"
+                + "    cp \"${CONF_FILE}\" \"${CONFIG_FILE}\"\n"
                 + "    \n"
                 + "    echo 'Configuration files replaced successfully'\n"
                 + "  else\n"
