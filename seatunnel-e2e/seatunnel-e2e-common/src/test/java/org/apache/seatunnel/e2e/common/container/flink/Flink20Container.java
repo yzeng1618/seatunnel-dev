@@ -177,9 +177,6 @@ public class Flink20Container extends AbstractTestFlinkContainer {
         org.testcontainers.lifecycle.Startables.deepStart(java.util.stream.Stream.of(jobManager))
                 .join();
 
-        // Debug: Check container configuration after startup
-        debugContainerConfiguration(jobManager);
-
         org.testcontainers.lifecycle.Startables.deepStart(java.util.stream.Stream.of(taskManager))
                 .join();
 
