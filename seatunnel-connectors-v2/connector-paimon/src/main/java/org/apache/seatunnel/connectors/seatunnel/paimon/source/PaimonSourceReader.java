@@ -108,8 +108,8 @@ public class PaimonSourceReader implements SourceReader<SeaTunnelRow, PaimonSour
             } else {
                 context.sendSplitRequest();
                 if (sourceSplits.isEmpty()) {
-                    log.debug("Waiting for table source split, sleeping 1s");
-                    Thread.sleep(1000L);
+                    log.debug("Waiting for table source split, sleeping 100ms");
+                    Thread.sleep(100L);
                 }
             }
         }

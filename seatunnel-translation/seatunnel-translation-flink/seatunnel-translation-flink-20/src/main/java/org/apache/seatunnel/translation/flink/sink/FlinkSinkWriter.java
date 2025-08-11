@@ -62,12 +62,7 @@ public class FlinkSinkWriter
     @Override
     public void flush(boolean endOfInput) throws IOException, InterruptedException {
         if (endOfInput) {
-            synchronized (this) {
-                if (!closed) {
-                    sinkWriter.close();
-                    closed = true;
-                }
-            }
+            // Just mark that we've reached end of input, but don't close here
         }
     }
 
@@ -75,8 +70,13 @@ public class FlinkSinkWriter
     public void close() throws Exception {
         synchronized (this) {
             if (!closed) {
-                sinkWriter.close();
-                closed = true;
+                try {
+                    sinkWriter.close();
+                } catch (Exception e) {
+                    System.err.println("Warning: Error closing sink writer: " + e.getMessage());
+                } finally {
+                    closed = true;
+                }
             }
         }
     }
