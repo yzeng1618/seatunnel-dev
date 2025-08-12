@@ -137,8 +137,14 @@ public class FlinkSink<InputT, CommT, WriterStateT, GlobalCommT>
     @Override
     public SimpleVersionedSerializer<FlinkWriterState<WriterStateT>> getWriterStateSerializer() {
         log.debug("Getting writer state serializer for Flink 1.20+");
-        return sink.getWriterStateSerializer().map(FlinkWriterStateSerializer::new).orElse(null);
+        if (sink.getWriterStateSerializer().isPresent()) {
+            return new FlinkWriterStateSerializer<>(sink.getWriterStateSerializer().get());
+        } else {
+            return new EmptyWriterStateSerializer<WriterStateT>();
+        }
     }
+
+
 
     @Override
     public SimpleVersionedSerializer<CommitWrapper<CommT>> getCommittableSerializer() {
