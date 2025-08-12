@@ -144,8 +144,6 @@ public class FlinkSink<InputT, CommT, WriterStateT, GlobalCommT>
         }
     }
 
-
-
     @Override
     public SimpleVersionedSerializer<CommitWrapper<CommT>> getCommittableSerializer() {
         log.debug("Getting committable serializer for Flink 1.20+");

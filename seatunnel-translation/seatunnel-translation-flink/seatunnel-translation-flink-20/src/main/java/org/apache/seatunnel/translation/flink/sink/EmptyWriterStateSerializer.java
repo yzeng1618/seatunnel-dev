@@ -22,9 +22,11 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 import java.io.IOException;
 
 /**
- * This is used to satisfy Flink 1.20's sink2 API requirement that getWriterStateSerializer() cannot return null.
+ * This is used to satisfy Flink 1.20's sink2 API requirement that getWriterStateSerializer() cannot
+ * return null.
  */
-public class EmptyWriterStateSerializer<T> implements SimpleVersionedSerializer<FlinkWriterState<T>> {
+public class EmptyWriterStateSerializer<T>
+        implements SimpleVersionedSerializer<FlinkWriterState<T>> {
 
     @Override
     public int getVersion() {
@@ -34,12 +36,14 @@ public class EmptyWriterStateSerializer<T> implements SimpleVersionedSerializer<
     @Override
     public byte[] serialize(FlinkWriterState<T> obj) throws IOException {
         // Should never be called since no states should be created
-        throw new UnsupportedOperationException("EmptyWriterStateSerializer should not serialize any states");
+        throw new UnsupportedOperationException(
+                "EmptyWriterStateSerializer should not serialize any states");
     }
 
     @Override
     public FlinkWriterState<T> deserialize(int version, byte[] serialized) throws IOException {
         // Should never be called since no states should be created
-        throw new UnsupportedOperationException("EmptyWriterStateSerializer should not deserialize any states");
+        throw new UnsupportedOperationException(
+                "EmptyWriterStateSerializer should not deserialize any states");
     }
 }
