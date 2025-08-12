@@ -71,7 +71,14 @@ public class FlinkSink<InputT, CommT, WriterStateT, GlobalCommT>
 
     @Override
     public SinkWriter<InputT> createWriter(InitContext initContext) throws IOException {
-        return null;
+        log.info("Creating FlinkSinkWriter with InitContext for Flink 1.20+");
+        org.apache.seatunnel.api.sink.SinkWriter.Context stContext =
+                new FlinkSinkWriterContext(initContext, parallelism);
+
+        org.apache.seatunnel.api.sink.SinkWriter<SeaTunnelRow, CommT, WriterStateT>
+                seatunnelWriter = sink.createWriter(stContext);
+
+        return new FlinkSinkWriter<>(seatunnelWriter, 1, stContext);
     }
 
     @Override
