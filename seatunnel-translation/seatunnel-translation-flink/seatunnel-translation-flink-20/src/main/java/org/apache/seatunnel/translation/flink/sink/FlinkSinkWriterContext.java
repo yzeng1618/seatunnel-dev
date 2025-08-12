@@ -24,7 +24,7 @@ import org.apache.seatunnel.api.sink.SinkWriter;
 import org.apache.seatunnel.translation.flink.metric.FlinkMetricContext;
 
 import org.apache.flink.api.common.functions.RuntimeContext;
-import org.apache.flink.api.connector.sink2.Sink;
+import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 
@@ -36,20 +36,22 @@ import java.lang.reflect.Method;
 @Slf4j
 public class FlinkSinkWriterContext implements SinkWriter.Context {
 
-    private final Sink.InitContext initContext;
+    private final WriterInitContext initContext;
     private final int parallelism;
     private final EventListener eventListener;
 
-    public FlinkSinkWriterContext(Sink.InitContext initContext, int parallelism) {
+    public FlinkSinkWriterContext(WriterInitContext initContext, int parallelism) {
         this.initContext = initContext;
         this.parallelism = parallelism;
         this.eventListener = new DefaultEventProcessor(getFlinkJobId(initContext));
-        log.info("FlinkSinkWriterContext initialized with parallelism: {}", parallelism);
+        log.info(
+                "FlinkSinkWriterContext initialized with parallelism: {} for Flink 1.20+",
+                parallelism);
     }
 
     @Override
     public int getIndexOfSubtask() {
-        return initContext.getSubtaskId();
+        return initContext.getTaskInfo().getIndexOfThisSubtask();
     }
 
     @Override
@@ -200,7 +202,7 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
         return null;
     }
 
-    private static String getFlinkJobId(Sink.InitContext context) {
+    private static String getFlinkJobId(WriterInitContext context) {
         try {
             return context.getJobInfo().getJobId().toString();
         } catch (Exception e) {
