@@ -81,35 +81,71 @@ public class FlinkSinkWriter
 
     @Override
     public void flush(boolean endOfInput) throws IOException, InterruptedException {
-        try {
-            // For Flink Sink API 2.0, we need to simulate the checkpoint behavior
-            // First call prepareCommit() to flush current batch
-            sinkWriter.prepareCommit();
-            log.debug("Sink writer prepareCommit called successfully, endOfInput: {}", endOfInput);
+        synchronized (this) {
+            if (closed) {
+                log.warn("Sink writer is already closed, skipping flush");
+                return;
+            }
 
-            // Then call snapshotState() to finalize the checkpoint and start new batch
-            // This is crucial for connectors like Doris that need proper checkpoint handling
-            sinkWriter.snapshotState(checkpointId);
-            log.debug("Sink writer snapshotState called with checkpointId: {}", checkpointId);
+            try {
+                // For Flink Sink API 2.0, we need to simulate the checkpoint behavior
+                // that was split between prepareCommit and snapshotState in the old API
 
-            // Increment checkpoint ID for next flush
-            this.checkpointId++;
-        } catch (Exception e) {
-            log.error("Error during sink writer flush", e);
-            throw new IOException("Failed to flush sink writer", e);
+                // Step 1: Call prepareCommit with current checkpointId
+                // This prepares the commit and may return commit info for 2PC
+                sinkWriter.prepareCommit(checkpointId);
+                log.debug("Sink writer prepareCommit called with checkpointId: {}", checkpointId);
+
+                // Step 2: Call snapshotState to finalize the checkpoint
+                // This captures the writer state and completes the checkpoint
+                sinkWriter.snapshotState(checkpointId);
+                log.debug("Sink writer snapshotState called with checkpointId: {}", checkpointId);
+
+                // Step 3: Increment checkpoint ID for next flush (like in flink-common)
+                this.checkpointId++;
+
+                log.debug(
+                        "Sink writer flush completed, endOfInput: {}, next checkpointId: {}",
+                        endOfInput,
+                        checkpointId);
+            } catch (Exception e) {
+                log.error("Error during sink writer flush with checkpointId: {}", checkpointId, e);
+                throw new IOException("Failed to flush sink writer", e);
+            }
         }
     }
 
     @Override
     public void close() throws Exception {
-        sinkWriter.close();
-        context.getEventListener().onEvent(new WriterCloseEvent());
-        try {
-            if (resourceManager != null) {
-                resourceManager.close();
+        synchronized (this) {
+            if (!closed) {
+                try {
+                    // Perform final flush before closing to ensure all data is committed
+                    log.debug("Performing final flush before closing sink writer");
+                    flush(true);
+                } catch (Exception e) {
+                    log.warn("Error during final flush before close", e);
+                    // Continue with close even if flush fails
+                }
+
+                try {
+                    sinkWriter.close();
+                    context.getEventListener().onEvent(new WriterCloseEvent());
+                } catch (Exception e) {
+                    log.error("Error closing sink writer: " + e.getMessage(), e);
+                } finally {
+                    closed = true;
+                }
+
+                // Close resource manager
+                try {
+                    if (resourceManager != null) {
+                        resourceManager.close();
+                    }
+                } catch (Throwable e) {
+                    log.error("close resourceManager error", e);
+                }
             }
-        } catch (Throwable e) {
-            log.error("close resourceManager error", e);
         }
     }
 }
