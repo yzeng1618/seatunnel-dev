@@ -61,8 +61,13 @@ public class FlinkSinkWriter
 
     @Override
     public void flush(boolean endOfInput) throws IOException, InterruptedException {
-        if (endOfInput) {
-            // Just mark that we've reached end of input, but don't close here
+        try {
+            // Call prepareCommit to ensure data is flushed to the sink
+            sinkWriter.prepareCommit();
+            log.debug("Sink writer flushed successfully, endOfInput: {}", endOfInput);
+        } catch (Exception e) {
+            log.error("Error during sink writer flush", e);
+            throw new IOException("Failed to flush sink writer", e);
         }
     }
 
