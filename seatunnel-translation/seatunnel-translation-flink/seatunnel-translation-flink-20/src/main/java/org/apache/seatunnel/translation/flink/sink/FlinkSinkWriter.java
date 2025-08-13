@@ -82,13 +82,16 @@ public class FlinkSinkWriter
     @Override
     public void flush(boolean endOfInput) throws IOException, InterruptedException {
         try {
-            // Call prepareCommit with current checkpointId to ensure data is flushed to the sink
-            // This is crucial for connectors like Doris that buffer data
-            sinkWriter.prepareCommit(checkpointId);
-            log.debug(
-                    "Sink writer flushed successfully, endOfInput: {}, checkpointId: {}",
-                    endOfInput,
-                    checkpointId);
+            // For Flink Sink API 2.0, we need to simulate the checkpoint behavior
+            // First call prepareCommit() to flush current batch
+            sinkWriter.prepareCommit();
+            log.debug("Sink writer prepareCommit called successfully, endOfInput: {}", endOfInput);
+
+            // Then call snapshotState() to finalize the checkpoint and start new batch
+            // This is crucial for connectors like Doris that need proper checkpoint handling
+            sinkWriter.snapshotState(checkpointId);
+            log.debug("Sink writer snapshotState called with checkpointId: {}", checkpointId);
+
             // Increment checkpoint ID for next flush
             this.checkpointId++;
         } catch (Exception e) {
