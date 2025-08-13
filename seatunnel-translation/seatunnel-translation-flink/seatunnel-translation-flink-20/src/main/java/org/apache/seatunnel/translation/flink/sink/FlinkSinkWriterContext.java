@@ -25,7 +25,6 @@ import org.apache.seatunnel.translation.flink.metric.FlinkMetricContext;
 
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.connector.sink2.Sink;
-import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 
@@ -37,36 +36,20 @@ import java.lang.reflect.Method;
 @Slf4j
 public class FlinkSinkWriterContext implements SinkWriter.Context {
 
-    private final Object initContext; // Can be either InitContext or WriterInitContext
+    private final Sink.InitContext initContext;
     private final int parallelism;
     private final EventListener eventListener;
-
-    public FlinkSinkWriterContext(WriterInitContext initContext, int parallelism) {
-        this.initContext = initContext;
-        this.parallelism = parallelism;
-        this.eventListener = new DefaultEventProcessor(getFlinkJobId(initContext));
-        log.info(
-                "FlinkSinkWriterContext initialized with WriterInitContext and parallelism: {} for Flink 1.20+",
-                parallelism);
-    }
 
     public FlinkSinkWriterContext(Sink.InitContext initContext, int parallelism) {
         this.initContext = initContext;
         this.parallelism = parallelism;
         this.eventListener = new DefaultEventProcessor(getFlinkJobId(initContext));
-        log.info(
-                "FlinkSinkWriterContext initialized with InitContext and parallelism: {} for Flink 1.20+",
-                parallelism);
+        log.info("FlinkSinkWriterContext initialized with parallelism: {}", parallelism);
     }
 
     @Override
     public int getIndexOfSubtask() {
-        if (initContext instanceof WriterInitContext) {
-            return ((WriterInitContext) initContext).getTaskInfo().getIndexOfThisSubtask();
-        } else if (initContext instanceof Sink.InitContext) {
-            return ((Sink.InitContext) initContext).getTaskInfo().getIndexOfThisSubtask();
-        }
-        throw new IllegalStateException("Unknown initContext type: " + initContext.getClass());
+        return initContext.getSubtaskId();
     }
 
     @Override
@@ -78,7 +61,7 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
     public MetricsContext getMetricsContext() {
         try {
             RuntimeContext runtimeContext = getRuntimeContext();
-            MetricGroup metricGroup = getMetricGroup();
+            MetricGroup metricGroup = initContext.metricGroup();
 
             if (runtimeContext != null && metricGroup != null) {
                 return new FlinkMetricContext(runtimeContext, metricGroup);
@@ -90,15 +73,6 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
             log.warn("Failed to create metrics context", e);
             return new FlinkMetricContext((MetricGroup) null);
         }
-    }
-
-    private MetricGroup getMetricGroup() {
-        if (initContext instanceof WriterInitContext) {
-            return ((WriterInitContext) initContext).metricGroup();
-        } else if (initContext instanceof Sink.InitContext) {
-            return ((Sink.InitContext) initContext).metricGroup();
-        }
-        return null;
     }
 
     @Override
@@ -224,15 +198,6 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
             log.debug("Failed to get RuntimeContext from fields", e);
         }
         return null;
-    }
-
-    private static String getFlinkJobId(WriterInitContext context) {
-        try {
-            return context.getJobInfo().getJobId().toString();
-        } catch (Exception e) {
-            log.warn("Get flink job id failed", e);
-            return null;
-        }
     }
 
     private static String getFlinkJobId(Sink.InitContext context) {
