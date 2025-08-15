@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * The committer wrapper of {@link SinkCommitter}, which is created by {@link
@@ -62,8 +61,7 @@ public class FlinkCommitter<CommT> implements Committer<CommitWrapper<CommT>> {
         if (sinkCommitter == null) {
             log.error("SinkCommitter is null, cannot perform commit");
             for (Committer.CommitRequest<CommitWrapper<CommT>> request : committables) {
-                request.signalFailedWithKnownReason(
-                        new IOException("SinkCommitter is null"));
+                request.signalFailedWithKnownReason(new IOException("SinkCommitter is null"));
             }
             throw new IOException("SinkCommitter is null");
         }

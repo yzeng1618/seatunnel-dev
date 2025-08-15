@@ -17,6 +17,7 @@
 
 package org.apache.seatunnel.translation.flink.sink;
 
+import org.apache.seatunnel.api.serialization.Serializer;
 import org.apache.seatunnel.api.sink.SeaTunnelSink;
 import org.apache.seatunnel.api.table.catalog.CatalogTable;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
@@ -39,6 +40,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -95,9 +97,10 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
             // Try to create SinkCommitter first
             if (seaTunnelSink.createCommitter().isPresent()) {
                 org.apache.seatunnel.api.sink.SinkCommitter<CommT> sinkCommitter =
-                    seaTunnelSink.createCommitter().get();
+                        seaTunnelSink.createCommitter().get();
                 if (sinkCommitter != null) {
-                    log.info("Created FlinkCommitter with SinkCommitter: {}",
+                    log.info(
+                            "Created FlinkCommitter with SinkCommitter: {}",
                             sinkCommitter.getClass().getSimpleName());
                     return new FlinkCommitter<>(sinkCommitter);
                 } else {
@@ -106,17 +109,24 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
             }
 
             // If no SinkCommitter, try SinkAggregatedCommitter
-            // Note: Flink 1.20 sink2 API doesn't support GlobalCommitter,
-            // so we handle SinkAggregatedCommitter through regular Committer
+            // Note: Flink 2.0 sink2 API doesn't support GlobalCommitter,
+            // so we handle SinkAggregatedCommitter through regular Committer adapter
             if (seaTunnelSink.createAggregatedCommitter().isPresent()) {
-                log.warn(
-                        "SinkAggregatedCommitter found but Flink 1.20 sink2 API doesn't support GlobalCommitter. "
-                                + "Using regular Committer which may not provide the same consistency guarantees.");
-                // TODO: Consider implementing a wrapper that handles aggregated commits
-                return null; // For now, return null to indicate no committer support
+                org.apache.seatunnel.api.sink.SinkAggregatedCommitter<CommT, ?>
+                        aggregatedCommitter = seaTunnelSink.createAggregatedCommitter().get();
+                if (aggregatedCommitter != null) {
+                    log.info(
+                            "Created FlinkAggregatedCommitterAdapter with SinkAggregatedCommitter: {}",
+                            aggregatedCommitter.getClass().getSimpleName());
+                    log.warn(
+                            "Using AggregatedCommitter through adapter - some features may be limited in Flink 2.0");
+                    return new FlinkAggregatedCommitterAdapter<>(aggregatedCommitter);
+                }
             }
 
-            log.debug("No committer available for sink: {}", seaTunnelSink.getClass().getSimpleName());
+            log.debug(
+                    "No committer available for sink: {}",
+                    seaTunnelSink.getClass().getSimpleName());
             return null;
         } catch (Exception e) {
             log.error("Error creating FlinkCommitter: {}", e.getMessage(), e);
@@ -127,7 +137,27 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
     @Override
     public SimpleVersionedSerializer<CommitWrapper<CommT>> getCommittableSerializer() {
         log.debug("Getting committable serializer");
-        return new CommitWrapperSerializer<>();
+        try {
+            // Based on flink-common implementation: return serializer if any committer exists
+            if (seaTunnelSink.createCommitter().isPresent()
+                    || seaTunnelSink.createAggregatedCommitter().isPresent()) {
+
+                Optional<Serializer<CommT>> serializerOpt = seaTunnelSink.getCommitInfoSerializer();
+                if (serializerOpt.isPresent()) {
+                    return new CommitWrapperSerializer<>(serializerOpt.get());
+                } else {
+                    log.debug("No commit info serializer available, using default");
+                    return new CommitWrapperSerializer<>();
+                }
+            } else {
+                log.debug("No committer available, returning null serializer");
+                return null;
+            }
+        } catch (IOException e) {
+            log.error("Error getting committable serializer: {}", e.getMessage(), e);
+            // Fallback to default serializer to avoid job failure
+            return new CommitWrapperSerializer<>();
+        }
     }
 
     // SupportsWriterState interface methods

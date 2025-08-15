@@ -21,7 +21,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * The commit message wrapper, which is used to wrapper the different commit messages and unify the
- * different implementations of {@link CommitT}. This version includes null safety checks for Flink 2.0.
+ * different implementations of {@link CommitT}. This version includes null safety checks for Flink
+ * 2.0.
  *
  * @param <CommitT> The generic type of commit message
  */
@@ -46,9 +47,7 @@ public class CommitWrapper<CommitT> {
 
     @Override
     public String toString() {
-        return "CommitWrapper{" +
-                "commit=" + (commit != null ? commit.toString() : "null") +
-                '}';
+        return "CommitWrapper{" + "commit=" + (commit != null ? commit.toString() : "null") + '}';
     }
 
     @Override
