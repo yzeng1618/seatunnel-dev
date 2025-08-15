@@ -21,6 +21,7 @@ import org.apache.seatunnel.api.sink.SeaTunnelSink;
 import org.apache.seatunnel.api.table.catalog.CatalogTable;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.translation.flink.serialization.CommitWrapperSerializer;
+import org.apache.seatunnel.translation.flink.serialization.EmptyFlinkWriterStateSerializer;
 import org.apache.seatunnel.translation.flink.serialization.FlinkWriterStateSerializer;
 
 import org.apache.flink.api.connector.sink2.Committer;
@@ -150,9 +151,10 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
     @Override
     public SimpleVersionedSerializer<FlinkWriterState<WriterStateT>> getWriterStateSerializer() {
         log.debug("Getting writer state serializer");
-        return seaTunnelSink
-                .getWriterStateSerializer()
-                .map(FlinkWriterStateSerializer::new)
-                .orElse(null);
+        if (seaTunnelSink.getWriterStateSerializer().isPresent()) {
+            return new FlinkWriterStateSerializer<>(seaTunnelSink.getWriterStateSerializer().get());
+        } else {
+            return new EmptyFlinkWriterStateSerializer<>();
+        }
     }
 }
