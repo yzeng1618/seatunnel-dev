@@ -86,12 +86,24 @@ public class FlinkSinkWriter<CommT, WriterStateT>
             SeaTunnelRow element, org.apache.flink.api.connector.sink2.SinkWriter.Context context)
             throws IOException, InterruptedException {
         if (element == null) {
+            log.debug("Received null element, skipping write");
             return;
         }
-        sinkWriter.write(element);
-        sinkWriteCount.inc();
-        sinkWriteBytes.inc(element.getBytesSize());
-        sinkWriterQPS.markEvent();
+
+        if (closed) {
+            log.warn("Sink writer is closed, cannot write element");
+            throw new IOException("Sink writer is closed");
+        }
+
+        try {
+            sinkWriter.write(element);
+            sinkWriteCount.inc();
+            sinkWriteBytes.inc(element.getBytesSize());
+            sinkWriterQPS.markEvent();
+        } catch (Exception e) {
+            log.error("Error writing element: {}", e.getMessage(), e);
+            throw new IOException("Failed to write element", e);
+        }
     }
 
     @Override
@@ -128,6 +140,11 @@ public class FlinkSinkWriter<CommT, WriterStateT>
             return new ArrayList<>();
         }
 
+        if (sinkWriter == null) {
+            log.error("SinkWriter is null, cannot prepare commit");
+            throw new IOException("SinkWriter is null");
+        }
+
         try {
             // Call the SeaTunnel sink writer's prepareCommit method
             Optional<CommT> commitInfo = sinkWriter.prepareCommit(checkpointId);
@@ -137,9 +154,14 @@ public class FlinkSinkWriter<CommT, WriterStateT>
 
             // Wrap the commit info in CommitWrapper
             List<CommitWrapper<CommT>> wrappedCommits = new ArrayList<>();
-            if (commitInfo.isPresent()) {
-                wrappedCommits.add(new CommitWrapper<>(commitInfo.get()));
-                log.debug("Created CommitWrapper for checkpointId: {}", checkpointId);
+            if (commitInfo != null && commitInfo.isPresent()) {
+                CommT commit = commitInfo.get();
+                if (commit != null) {
+                    wrappedCommits.add(new CommitWrapper<>(commit));
+                    log.debug("Created CommitWrapper for checkpointId: {}", checkpointId);
+                } else {
+                    log.debug("Commit info is null for checkpointId: {}", checkpointId);
+                }
             } else {
                 log.debug("No commit info to wrap for checkpointId: {}", checkpointId);
             }

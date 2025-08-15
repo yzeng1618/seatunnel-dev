@@ -24,6 +24,7 @@ import org.apache.flink.api.connector.sink2.Committer;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -57,11 +58,41 @@ public class FlinkCommitter<CommT> implements Committer<CommitWrapper<CommT>> {
 
         log.debug("Committing {} committables", committables.size());
 
-        // Extract commit info from CommitRequest wrappers
-        List<CommT> commitInfos =
-                committables.stream()
-                        .map(request -> request.getCommittable().getCommit())
-                        .collect(Collectors.toList());
+        // Validate sinkCommitter is not null
+        if (sinkCommitter == null) {
+            log.error("SinkCommitter is null, cannot perform commit");
+            for (Committer.CommitRequest<CommitWrapper<CommT>> request : committables) {
+                request.signalFailedWithKnownReason(
+                        new IOException("SinkCommitter is null"));
+            }
+            throw new IOException("SinkCommitter is null");
+        }
+
+        // Extract commit info from CommitRequest wrappers with null checks
+        List<CommT> commitInfos = new ArrayList<>();
+        for (Committer.CommitRequest<CommitWrapper<CommT>> request : committables) {
+            if (request != null && request.getCommittable() != null) {
+                CommT commit = request.getCommittable().getCommit();
+                if (commit != null) {
+                    commitInfos.add(commit);
+                } else {
+                    log.warn("Found null commit in committable, skipping");
+                }
+            } else {
+                log.warn("Found null request or committable, skipping");
+            }
+        }
+
+        if (commitInfos.isEmpty()) {
+            log.warn("No valid commit infos found, marking all as failed");
+            for (Committer.CommitRequest<CommitWrapper<CommT>> request : committables) {
+                if (request != null) {
+                    request.signalFailedWithKnownReason(
+                            new IOException("No valid commit info found"));
+                }
+            }
+            return;
+        }
 
         try {
             // Call SeaTunnel's commit method
@@ -74,18 +105,23 @@ public class FlinkCommitter<CommT> implements Committer<CommitWrapper<CommT>> {
                 // In Flink 1.20 sink2 API, we can't return failed commits for retry
                 // We mark them as failed with known reason
                 for (Committer.CommitRequest<CommitWrapper<CommT>> request : committables) {
-                    if (reCommittable.contains(request.getCommittable().getCommit())) {
-                        request.signalFailedWithKnownReason(
-                                new IOException(
-                                        "Commit failed and re-commit is not supported in Flink 1.20"));
-                    } else {
-                        request.signalAlreadyCommitted();
+                    if (request != null && request.getCommittable() != null) {
+                        CommT commit = request.getCommittable().getCommit();
+                        if (reCommittable.contains(commit)) {
+                            request.signalFailedWithKnownReason(
+                                    new IOException(
+                                            "Commit failed and re-commit is not supported in Flink 1.20"));
+                        } else {
+                            request.signalAlreadyCommitted();
+                        }
                     }
                 }
             } else {
                 // All commits succeeded, mark them as committed
                 for (Committer.CommitRequest<CommitWrapper<CommT>> request : committables) {
-                    request.signalAlreadyCommitted();
+                    if (request != null) {
+                        request.signalAlreadyCommitted();
+                    }
                 }
                 log.debug("Successfully committed {} items", committables.size());
             }
@@ -93,7 +129,9 @@ public class FlinkCommitter<CommT> implements Committer<CommitWrapper<CommT>> {
             log.error("Error during commit operation", e);
             // Mark all requests as failed
             for (Committer.CommitRequest<CommitWrapper<CommT>> request : committables) {
-                request.signalFailedWithKnownReason(e);
+                if (request != null) {
+                    request.signalFailedWithKnownReason(e);
+                }
             }
             throw new IOException("Failed to commit data", e);
         }

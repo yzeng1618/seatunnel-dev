@@ -89,28 +89,39 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
     @Override
     public Committer<CommitWrapper<CommT>> createCommitter(CommitterInitContext context)
             throws IOException {
-        log.debug("Creating FlinkCommitter");
+        log.debug("Creating FlinkCommitter with context: {}", context);
 
-        // Try to create SinkCommitter first
-        if (seaTunnelSink.createCommitter().isPresent()) {
-            return seaTunnelSink
-                    .createCommitter()
-                    .<Committer<CommitWrapper<CommT>>>map(FlinkCommitter::new)
-                    .orElse(null);
+        try {
+            // Try to create SinkCommitter first
+            if (seaTunnelSink.createCommitter().isPresent()) {
+                org.apache.seatunnel.api.sink.SinkCommitter<CommT> sinkCommitter =
+                    seaTunnelSink.createCommitter().get();
+                if (sinkCommitter != null) {
+                    log.info("Created FlinkCommitter with SinkCommitter: {}",
+                            sinkCommitter.getClass().getSimpleName());
+                    return new FlinkCommitter<>(sinkCommitter);
+                } else {
+                    log.warn("SinkCommitter is null, cannot create FlinkCommitter");
+                }
+            }
+
+            // If no SinkCommitter, try SinkAggregatedCommitter
+            // Note: Flink 1.20 sink2 API doesn't support GlobalCommitter,
+            // so we handle SinkAggregatedCommitter through regular Committer
+            if (seaTunnelSink.createAggregatedCommitter().isPresent()) {
+                log.warn(
+                        "SinkAggregatedCommitter found but Flink 1.20 sink2 API doesn't support GlobalCommitter. "
+                                + "Using regular Committer which may not provide the same consistency guarantees.");
+                // TODO: Consider implementing a wrapper that handles aggregated commits
+                return null; // For now, return null to indicate no committer support
+            }
+
+            log.debug("No committer available for sink: {}", seaTunnelSink.getClass().getSimpleName());
+            return null;
+        } catch (Exception e) {
+            log.error("Error creating FlinkCommitter: {}", e.getMessage(), e);
+            throw new IOException("Failed to create FlinkCommitter", e);
         }
-
-        // If no SinkCommitter, try SinkAggregatedCommitter
-        // Note: Flink 1.20 sink2 API doesn't support GlobalCommitter,
-        // so we handle SinkAggregatedCommitter through regular Committer
-        if (seaTunnelSink.createAggregatedCommitter().isPresent()) {
-            log.warn(
-                    "SinkAggregatedCommitter found but Flink 1.20 sink2 API doesn't support GlobalCommitter. "
-                            + "Using regular Committer which may not provide the same consistency guarantees.");
-            // TODO: Consider implementing a wrapper that handles aggregated commits
-            return null; // For now, return null to indicate no committer support
-        }
-
-        return null;
     }
 
     @Override
