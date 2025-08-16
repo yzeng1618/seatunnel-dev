@@ -68,7 +68,7 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
     public void commit(Collection<Committer.CommitRequest<CommitWrapper<CommT>>> committables)
             throws IOException, InterruptedException {
         if (committables == null || committables.isEmpty()) {
-            log.debug("No committables to commit");
+            log.debug("No committables to commit - this is normal for some scenarios");
             return;
         }
 
@@ -100,7 +100,17 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
         }
 
         if (commitInfos.isEmpty()) {
-            log.warn("No valid commit infos found");
+            if (validRequests.isEmpty()) {
+                log.debug(
+                        "No valid commit infos and no valid requests - all requests already handled as failures");
+            } else {
+                log.warn(
+                        "No valid commit infos found, but will signal success for {} empty commits",
+                        validRequests.size());
+                for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
+                    request.signalAlreadyCommitted();
+                }
+            }
             return;
         }
 
@@ -109,10 +119,12 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
             GlobalCommT globalCommit = aggregatedCommitter.combine(commitInfos);
 
             if (globalCommit == null) {
-                log.warn("Aggregated committer returned null global commit");
+                log.warn(
+                        "Aggregated committer returned null global commit, treating as successful empty commit");
+                // Some aggregated committers may return null for empty commits, which should be
+                // treated as success
                 for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
-                    request.signalFailedWithKnownReason(
-                            new IOException("Aggregated committer returned null global commit"));
+                    request.signalAlreadyCommitted();
                 }
                 return;
             }
