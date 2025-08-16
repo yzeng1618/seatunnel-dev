@@ -17,7 +17,9 @@
 
 package org.apache.seatunnel.translation.flink.sink;
 
+import org.apache.seatunnel.api.sink.MultiTableResourceManager;
 import org.apache.seatunnel.api.sink.SinkAggregatedCommitter;
+import org.apache.seatunnel.api.sink.SupportResourceShare;
 
 import org.apache.flink.api.connector.sink2.Committer;
 
@@ -29,23 +31,33 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * Wrapper for SinkAggregatedCommitter to work with Flink 1.20 sink2 API. This provides a bridge
- * between Flink's Committer interface and SeaTunnel's SinkAggregatedCommitter.
+ * Simplified aggregated committer for Flink 1.20 that directly wraps SeaTunnel's
+ * SinkAggregatedCommitter. This is a much simpler approach compared to FlinkMultiTableSinkManager.
  */
 @Slf4j
-public class FlinkAggregatedCommitterWrapper<CommT, GlobalCommT>
+public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
         implements Committer<CommitWrapper<CommT>> {
 
     private final SinkAggregatedCommitter<CommT, GlobalCommT> aggregatedCommitter;
+    private MultiTableResourceManager<Object> resourceManager;
 
-    public FlinkAggregatedCommitterWrapper(
+    public FlinkSimpleAggregatedCommitter(
             SinkAggregatedCommitter<CommT, GlobalCommT> aggregatedCommitter) {
         this.aggregatedCommitter = aggregatedCommitter;
 
+        // Initialize resource manager if supported
+        if (aggregatedCommitter instanceof SupportResourceShare) {
+            @SuppressWarnings("unchecked")
+            SupportResourceShare<Object> supportCommitter =
+                    (SupportResourceShare<Object>) aggregatedCommitter;
+            resourceManager = supportCommitter.initMultiTableResourceManager(1, 1);
+            supportCommitter.setMultiTableResourceManager(resourceManager, 0);
+        }
+
         // Initialize the aggregated committer
         try {
-            this.aggregatedCommitter.init();
-            log.debug("FlinkAggregatedCommitterWrapper created and initialized");
+            aggregatedCommitter.init();
+            log.debug("FlinkSimpleAggregatedCommitter initialized");
         } catch (Exception e) {
             log.error("Failed to initialize aggregated committer", e);
             throw new RuntimeException("Failed to initialize aggregated committer", e);
@@ -60,9 +72,11 @@ public class FlinkAggregatedCommitterWrapper<CommT, GlobalCommT>
             return;
         }
 
-        log.debug("Committing {} committables using aggregated committer", committables.size());
+        log.debug(
+                "Committing {} committables using simple aggregated committer",
+                committables.size());
 
-        // Extract commit info from CommitRequest wrappers with null checks
+        // Extract commit info from CommitRequest wrappers
         List<CommT> commitInfos = new ArrayList<>();
         List<Committer.CommitRequest<CommitWrapper<CommT>>> validRequests = new ArrayList<>();
 
@@ -91,7 +105,7 @@ public class FlinkAggregatedCommitterWrapper<CommT, GlobalCommT>
         }
 
         try {
-            // Step 1: Combine commits into global commit
+            // Step 1: Combine commits into global commit (mimicking FlinkGlobalCommitter behavior)
             GlobalCommT globalCommit = aggregatedCommitter.combine(commitInfos);
 
             if (globalCommit == null) {
@@ -123,23 +137,26 @@ public class FlinkAggregatedCommitterWrapper<CommT, GlobalCommT>
                     request.signalAlreadyCommitted();
                 }
                 log.debug(
-                        "Successfully committed {} items using aggregated committer",
+                        "Successfully committed {} items using simple aggregated committer",
                         validRequests.size());
             }
 
         } catch (Exception e) {
-            log.error("Error during aggregated commit operation", e);
+            log.error("Error during simple aggregated commit operation", e);
             // Mark all requests as failed
             for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
                 request.signalFailedWithKnownReason(e);
             }
-            throw new IOException("Failed to commit using aggregated committer", e);
+            throw new IOException("Failed to commit using simple aggregated committer", e);
         }
     }
 
     @Override
     public void close() throws Exception {
-        log.debug("Closing FlinkAggregatedCommitterWrapper");
+        log.debug("Closing FlinkSimpleAggregatedCommitter");
+
+        Exception firstException = null;
+
         try {
             if (aggregatedCommitter != null) {
                 aggregatedCommitter.close();
@@ -147,7 +164,23 @@ public class FlinkAggregatedCommitterWrapper<CommT, GlobalCommT>
             }
         } catch (Exception e) {
             log.error("Error closing aggregated committer", e);
-            throw e;
+            firstException = e;
+        }
+
+        try {
+            if (resourceManager != null) {
+                resourceManager.close();
+                log.debug("Resource manager closed successfully");
+            }
+        } catch (Exception e) {
+            log.error("Error closing resource manager", e);
+            if (firstException == null) {
+                firstException = e;
+            }
+        }
+
+        if (firstException != null) {
+            throw firstException;
         }
     }
 }
