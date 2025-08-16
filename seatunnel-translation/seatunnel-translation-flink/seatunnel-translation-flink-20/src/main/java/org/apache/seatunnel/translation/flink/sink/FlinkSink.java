@@ -38,7 +38,9 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -50,6 +52,7 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
     private final SeaTunnelSink<SeaTunnelRow, WriterStateT, CommT, GlobalCommT> seaTunnelSink;
     private final List<CatalogTable> catalogTables;
     private final int parallelism;
+    private final FlinkMultiTableSinkManager<CommT, GlobalCommT> multiTableManager;
 
     @SuppressWarnings("unchecked")
     public FlinkSink(
@@ -60,7 +63,45 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
                 (SeaTunnelSink<SeaTunnelRow, WriterStateT, CommT, GlobalCommT>) seaTunnelSink;
         this.catalogTables = catalogTables;
         this.parallelism = parallelism;
-        log.info("FlinkSink initialized with parallelism: {}", parallelism);
+        this.multiTableManager = new FlinkMultiTableSinkManager<>();
+
+        // Initialize multi-table manager if we have aggregated committers
+        initializeMultiTableManager();
+
+        log.info(
+                "FlinkSink initialized with parallelism: {}, multi-table support: {}",
+                parallelism,
+                multiTableManager.isInitialized());
+    }
+
+    /** Initialize multi-table manager if aggregated committers are available. */
+    private void initializeMultiTableManager() {
+        try {
+            if (seaTunnelSink.createAggregatedCommitter().isPresent()) {
+                Map<
+                                String,
+                                org.apache.seatunnel.api.sink.SinkAggregatedCommitter<
+                                        CommT, GlobalCommT>>
+                        aggregatedCommitters = new HashMap<>();
+
+                // For now, we create a single aggregated committer
+                // In a real multi-table scenario, this would be populated with multiple committers
+                String defaultTableId =
+                        catalogTables != null && !catalogTables.isEmpty()
+                                ? catalogTables.get(0).getTableId().toString()
+                                : "default_table";
+
+                aggregatedCommitters.put(
+                        defaultTableId, seaTunnelSink.createAggregatedCommitter().get());
+
+                multiTableManager.initialize(aggregatedCommitters);
+                log.debug("Multi-table manager initialized with aggregated committers");
+            } else {
+                log.debug("No aggregated committers found, multi-table manager not initialized");
+            }
+        } catch (Exception e) {
+            log.warn("Failed to initialize multi-table manager", e);
+        }
     }
 
     @Override
@@ -99,15 +140,20 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
                     .orElse(null);
         }
 
-        // If no SinkCommitter, try SinkAggregatedCommitter
-        // Note: Flink 1.20 sink2 API doesn't support GlobalCommitter,
-        // so we handle SinkAggregatedCommitter through regular Committer
+        // If no SinkCommitter, check if we have multi-table manager with aggregated committers
+        if (multiTableManager.isInitialized()) {
+            log.info("Using FlinkMultiTableCommitter to handle aggregated commits in Flink 1.20");
+            return new FlinkMultiTableCommitter<>(multiTableManager);
+        }
+
+        // If no SinkCommitter and no multi-table support, try SinkAggregatedCommitter
         if (seaTunnelSink.createAggregatedCommitter().isPresent()) {
             log.warn(
                     "SinkAggregatedCommitter found but Flink 1.20 sink2 API doesn't support GlobalCommitter. "
                             + "Using regular Committer which may not provide the same consistency guarantees.");
-            // TODO: Consider implementing a wrapper that handles aggregated commits
-            return null; // For now, return null to indicate no committer support
+            // Create a simple wrapper for single aggregated committer
+            return new FlinkAggregatedCommitterWrapper<>(
+                    seaTunnelSink.createAggregatedCommitter().get());
         }
 
         return null;

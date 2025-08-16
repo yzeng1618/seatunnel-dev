@@ -52,6 +52,7 @@ public class FlinkSinkWriter<CommT, WriterStateT>
     private long checkpointId;
     private MultiTableResourceManager resourceManager;
     private boolean closed = false;
+    private boolean isMultiTableSink = false;
 
     public FlinkSinkWriter(
             SinkWriter<SeaTunnelRow, CommT, WriterStateT> sinkWriter,
@@ -78,6 +79,8 @@ public class FlinkSinkWriter<CommT, WriterStateT>
             resourceManager =
                     ((SupportResourceShare) sinkWriter).initMultiTableResourceManager(1, 1);
             ((SupportResourceShare) sinkWriter).setMultiTableResourceManager(resourceManager, 0);
+            isMultiTableSink = true;
+            log.debug("Multi-table resource manager initialized for sink writer");
         }
     }
 
