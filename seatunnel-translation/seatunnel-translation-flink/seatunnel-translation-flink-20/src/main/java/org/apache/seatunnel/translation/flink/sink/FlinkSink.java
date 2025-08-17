@@ -142,9 +142,22 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
             org.apache.seatunnel.api.sink.SinkWriter<SeaTunnelRow, CommT, WriterStateT>
                     seatunnelWriter = seaTunnelSink.restoreWriter(writerContext, states);
 
-            // Use the checkpoint ID from the first recovered state
-            long checkpointId = recoveredState.iterator().next().getCheckpointId() + 1;
-            return new FlinkSinkWriter<>(seatunnelWriter, context, writerContext, checkpointId);
+            // Find the maximum checkpoint ID from all recovered states to ensure consistency
+            long maxCheckpointId =
+                    recoveredState.stream()
+                            .mapToLong(FlinkWriterState::getCheckpointId)
+                            .max()
+                            .orElse(0L);
+
+            // Start from the next checkpoint ID after the maximum recovered checkpoint
+            long nextCheckpointId = maxCheckpointId + 1;
+
+            log.info(
+                    "Restored writer with max checkpointId: {}, starting from: {}",
+                    maxCheckpointId,
+                    nextCheckpointId);
+
+            return new FlinkSinkWriter<>(seatunnelWriter, context, writerContext, nextCheckpointId);
         }
     }
 

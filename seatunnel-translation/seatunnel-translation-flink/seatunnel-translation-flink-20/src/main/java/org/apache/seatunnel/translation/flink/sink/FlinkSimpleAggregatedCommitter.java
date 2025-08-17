@@ -151,27 +151,33 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
                     aggregatedCommitter.commit(java.util.Collections.singletonList(globalCommit));
 
             if (reCommittable != null && !reCommittable.isEmpty()) {
-                log.error(
-                        "Aggregated committer returned {} items for re-commit, but Flink 1.20 sink2 API doesn't support re-commit. "
-                                + "This may indicate a transaction failure in schema evolution scenario.",
+                // IMPORTANT: Following the same pattern as Flink-Common
+                // In Flink-Common, re-committable items are logged but ignored (always returns
+                // empty list)
+                // We should do the same to maintain compatibility and avoid unnecessary failures
+                log.warn(
+                        "Aggregated committer returned {} items for re-commit. "
+                                + "Following Flink-Common pattern: logging but treating as successful. "
+                                + "Re-commit is not supported in current Flink engine versions.",
                         reCommittable.size());
 
-                // In schema evolution scenarios, transaction failures can be critical
-                // We need to fail fast to maintain data consistency
-                IOException commitException =
-                        new IOException(
-                                String.format(
-                                        "Transaction commit failed with %d items requiring re-commit. "
-                                                + "Re-commit is not supported in Flink 1.20. This may cause data inconsistency in schema evolution scenarios.",
-                                        reCommittable.size()));
-
-                // Mark all as failed since we can't re-commit
-                for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
-                    request.signalFailedWithKnownReason(commitException);
+                // Log details for debugging, but don't fail the commit
+                if (log.isDebugEnabled()) {
+                    log.debug("Re-committable items (ignored): {}", reCommittable);
+                    log.debug("Original global commit: {}", globalCommit);
                 }
 
-                // Log the failed global commit for debugging
-                log.error("Failed global commit details: {}", globalCommit);
+                // CRITICAL: Unlike our previous implementation, we treat this as SUCCESS
+                // This matches the behavior of Flink-Common which ignores re-committable items
+                // All commits are considered successful, following the established pattern
+                for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
+                    request.signalAlreadyCommitted();
+                }
+
+                log.info(
+                        "Successfully handled {} commit requests (with {} ignored re-committable items)",
+                        validRequests.size(),
+                        reCommittable.size());
 
             } else {
                 // All commits succeeded
@@ -187,33 +193,30 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
             }
 
         } catch (Exception e) {
-            log.error(
-                    "Error during simple aggregated commit operation. This is critical in schema evolution scenarios.",
-                    e);
+            log.error("Error during aggregated commit operation", e);
 
-            // Enhanced error information for debugging schema evolution issues
+            // Provide context for debugging
             log.error(
                     "Commit context - Total committables: {}, Valid requests: {}, Commit infos: {}",
                     committables.size(),
                     validRequests.size(),
                     commitInfos.size());
 
-            // Mark all requests as failed with detailed error information
-            IOException detailedException =
-                    new IOException(
-                            String.format(
-                                    "Aggregated commit failed during schema evolution. "
-                                            + "Processed %d committables, %d valid requests. Original error: %s",
-                                    committables.size(), validRequests.size(), e.getMessage()),
-                            e);
+            // Create a comprehensive error message
+            String errorContext =
+                    String.format(
+                            "Aggregated commit failed. Processed %d committables, %d valid requests. Error: %s",
+                            committables.size(), validRequests.size(), e.getMessage());
 
+            IOException detailedException = new IOException(errorContext, e);
+
+            // Mark all valid requests as failed
             for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
                 request.signalFailedWithKnownReason(detailedException);
             }
 
-            // Re-throw with enhanced context
-            throw new IOException(
-                    "Critical failure in aggregated committer during schema evolution", e);
+            // Re-throw the exception to indicate commit failure
+            throw new IOException("Aggregated commit operation failed", e);
         }
     }
 
@@ -226,19 +229,15 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
             return;
         }
 
-        // Log commit info patterns that might indicate schema evolution
+        // Log commit info patterns for debugging
         if (log.isDebugEnabled()) {
-            log.debug(
-                    "Validating {} commit infos for schema evolution patterns", commitInfos.size());
+            log.debug("Processing {} commit infos", commitInfos.size());
 
-            // Check for potential schema evolution indicators
+            // Log each commit info for debugging
             for (int i = 0; i < commitInfos.size(); i++) {
                 CommT commitInfo = commitInfos.get(i);
                 if (commitInfo != null) {
                     log.debug("Commit info [{}]: {}", i, commitInfo.toString());
-
-                    // Additional validation can be added here based on specific commit info types
-                    // For example, checking for DDL operations, table structure changes, etc.
                 }
             }
         }
