@@ -51,7 +51,7 @@ public class FlinkCommitter<CommT> implements Committer<CommitWrapper<CommT>> {
     public void commit(Collection<Committer.CommitRequest<CommitWrapper<CommT>>> committables)
             throws IOException, InterruptedException {
         if (committables == null || committables.isEmpty()) {
-            log.debug("No committables to commit - this is normal for some scenarios");
+            log.debug("No committables to commit");
             return;
         }
 
@@ -68,15 +68,19 @@ public class FlinkCommitter<CommT> implements Committer<CommitWrapper<CommT>> {
             List<CommT> reCommittable = sinkCommitter.commit(commitInfos);
 
             if (reCommittable != null && !reCommittable.isEmpty()) {
-                log.error(
-                        "SeaTunnel committer returned {} items for re-commit, but Flink 1.20 sink2 API doesn't support re-commit. Marking ALL commits as failed to prevent data inconsistency.",
+                log.warn(
+                        "SeaTunnel committer returned {} items for re-commit, but Flink 1.20 sink2 API doesn't support re-commit. These will be ignored.",
                         reCommittable.size());
+                // In Flink 1.20 sink2 API, we can't return failed commits for retry
+                // We mark them as failed with known reason
                 for (Committer.CommitRequest<CommitWrapper<CommT>> request : committables) {
-                    request.signalFailedWithKnownReason(
-                            new IOException(
-                                    String.format(
-                                            "Batch commit failed: %d items need re-commit but Flink 1.20 doesn't support partial retry. All commits in this batch are marked as failed to prevent data inconsistency.",
-                                            reCommittable.size())));
+                    if (reCommittable.contains(request.getCommittable().getCommit())) {
+                        request.signalFailedWithKnownReason(
+                                new IOException(
+                                        "Commit failed and re-commit is not supported in Flink 1.20"));
+                    } else {
+                        request.signalAlreadyCommitted();
+                    }
                 }
             } else {
                 // All commits succeeded, mark them as committed

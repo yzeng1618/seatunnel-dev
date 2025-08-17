@@ -105,16 +105,10 @@ public class FlinkSinkWriter<CommT, WriterStateT>
         }
 
         try {
-            // Step 1: Call snapshotState to finalize the checkpoint
-            // This captures the writer state and completes the checkpoint
-            sinkWriter.snapshotState(checkpointId);
-            log.debug("Sink writer snapshotState called with checkpointId: {}", checkpointId);
-
-            // Step 2: Increment checkpoint ID for next flush (like in flink-common)
-            this.checkpointId++;
-
+            // In Flink 1.20 Sink2 API, flush is called before prepareCommit
+            // We don't need to call snapshotState here as it will be called in snapshotState method
             log.debug(
-                    "Sink writer flush completed, endOfInput: {}, next checkpointId: {}",
+                    "Sink writer flush completed, endOfInput: {}, current checkpointId: {}",
                     endOfInput,
                     checkpointId);
         } catch (Exception e) {
@@ -133,18 +127,43 @@ public class FlinkSinkWriter<CommT, WriterStateT>
 
         try {
             // Call the SeaTunnel sink writer's prepareCommit method
-            Optional<CommT> commitInfo = sinkWriter.prepareCommit(checkpointId);
+            // Use the current checkpointId (which should be the one we're preparing for)
+            long currentCheckpointId = this.checkpointId;
+            Optional<CommT> commitInfo = sinkWriter.prepareCommit(currentCheckpointId);
             log.debug(
-                    "Sink writer prepareCommit returned commit info for checkpointId: {}",
-                    checkpointId);
+                    "Sink writer prepareCommit called with checkpointId: {}, returned commit info: {}",
+                    currentCheckpointId,
+                    commitInfo.isPresent());
 
             // Wrap the commit info in CommitWrapper
             List<CommitWrapper<CommT>> wrappedCommits = new ArrayList<>();
             if (commitInfo.isPresent()) {
-                wrappedCommits.add(new CommitWrapper<>(commitInfo.get()));
-                log.debug("Created CommitWrapper for checkpointId: {}", checkpointId);
+                CommitWrapper<CommT> wrapper = new CommitWrapper<>(commitInfo.get());
+                wrappedCommits.add(wrapper);
+                log.debug(
+                        "Created CommitWrapper for checkpointId: {} with commit: {}",
+                        currentCheckpointId,
+                        commitInfo.get());
+
+                // Enhanced logging for schema evolution scenarios
+                if (isMultiTableSink) {
+                    log.debug(
+                            "Multi-table sink prepared commit for checkpointId: {} - this may be part of schema evolution",
+                            currentCheckpointId);
+                }
             } else {
-                log.debug("No commit info to wrap for checkpointId: {}", checkpointId);
+                log.debug(
+                        "No commit info to wrap for checkpointId: {} - this is normal for empty checkpoints or schema evolution scenarios",
+                        currentCheckpointId);
+                // For multi-table scenarios and schema evolution, some writers may not have data to
+                // commit
+                // This is normal and should not be treated as an error
+                // However, we should still track this for debugging purposes
+                if (isMultiTableSink) {
+                    log.debug(
+                            "Multi-table sink has no commit info for checkpointId: {} - may indicate schema evolution or empty checkpoint",
+                            currentCheckpointId);
+                }
             }
 
             return wrappedCommits;
@@ -173,12 +192,35 @@ public class FlinkSinkWriter<CommT, WriterStateT>
                 for (WriterStateT state : states) {
                     wrappedStates.add(new FlinkWriterState<>(checkpointId, state));
                 }
+
+                // Enhanced logging for schema evolution scenarios
+                if (isMultiTableSink && !states.isEmpty()) {
+                    log.debug(
+                            "Multi-table sink snapshotted {} states for checkpointId: {} - schema evolution may be in progress",
+                            states.size(),
+                            checkpointId);
+                }
+            } else {
+                log.debug(
+                        "No states to snapshot for checkpointId: {} - this may be normal for schema evolution scenarios",
+                        checkpointId);
             }
 
             log.debug(
                     "Snapshotted {} states for checkpointId: {}",
                     wrappedStates.size(),
                     checkpointId);
+
+            // Update internal checkpoint ID for next checkpoint (similar to flink-common)
+            // This is critical for maintaining transaction boundaries in schema evolution scenarios
+            long previousCheckpointId = this.checkpointId;
+            this.checkpointId = checkpointId + 1;
+
+            log.debug(
+                    "Updated internal checkpointId from {} to {} after snapshot",
+                    previousCheckpointId,
+                    this.checkpointId);
+
             return wrappedStates;
         } catch (Exception e) {
             log.error("Error during state snapshot for checkpointId: {}", checkpointId, e);

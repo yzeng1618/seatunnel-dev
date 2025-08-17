@@ -69,12 +69,27 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
             throws IOException, InterruptedException {
         if (committables == null || committables.isEmpty()) {
             log.debug("No committables to commit - this is normal for some scenarios");
+            // Even when committables is empty, we should not return directly
+            // because Flink may still expect us to handle the commit request properly
+            // However, since there are no committables, there's nothing to process
             return;
         }
 
         log.debug(
                 "Committing {} committables using simple aggregated committer",
                 committables.size());
+
+        // Enhanced logging for schema evolution scenarios
+        if (log.isDebugEnabled()) {
+            committables.forEach(
+                    request -> {
+                        if (request != null && request.getCommittable() != null) {
+                            log.debug(
+                                    "Processing committable: {}",
+                                    request.getCommittable().getCommit());
+                        }
+                    });
+        }
 
         // Extract commit info from CommitRequest wrappers
         List<CommT> commitInfos = new ArrayList<>();
@@ -100,67 +115,155 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
         }
 
         if (commitInfos.isEmpty()) {
-            if (validRequests.isEmpty()) {
-                log.debug(
-                        "No valid commit infos and no valid requests - all requests already handled as failures");
-            } else {
-                log.warn(
-                        "No valid commit infos found, but will signal success for {} empty commits",
-                        validRequests.size());
-                for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
-                    request.signalAlreadyCommitted();
-                }
+            log.warn("No valid commit infos found, but will signal success for empty commits");
+            // Even if no commit infos, we should signal success for all valid requests
+            // This handles cases where all committables are empty but requests need to be
+            // acknowledged
+            for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
+                request.signalAlreadyCommitted();
             }
             return;
         }
 
         try {
-            // Step 1: Combine commits into global commit (mimicking FlinkGlobalCommitter behavior)
-            GlobalCommT globalCommit = aggregatedCommitter.combine(commitInfos);
+            // Step 1: Combine commits into global commit with schema evolution support
+            log.debug("Combining {} commit infos into global commit", commitInfos.size());
+            GlobalCommT globalCommit = combineWithSchemaEvolutionSupport(commitInfos);
 
             if (globalCommit == null) {
                 log.warn(
                         "Aggregated committer returned null global commit, treating as successful empty commit");
                 // Some aggregated committers may return null for empty commits, which should be
                 // treated as success
+                // This is common in schema evolution scenarios where some checkpoints may be empty
                 for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
                     request.signalAlreadyCommitted();
                 }
+                log.debug("Successfully handled {} empty commits", validRequests.size());
                 return;
             }
 
+            log.debug("Successfully combined commits into global commit: {}", globalCommit);
+
             // Step 2: Commit the global commit
+            log.debug("Committing global commit to aggregated committer");
             List<GlobalCommT> reCommittable =
                     aggregatedCommitter.commit(java.util.Collections.singletonList(globalCommit));
 
             if (reCommittable != null && !reCommittable.isEmpty()) {
-                log.warn(
-                        "Aggregated committer returned {} items for re-commit, but Flink 1.20 sink2 API doesn't support re-commit",
+                log.error(
+                        "Aggregated committer returned {} items for re-commit, but Flink 1.20 sink2 API doesn't support re-commit. "
+                                + "This may indicate a transaction failure in schema evolution scenario.",
                         reCommittable.size());
+
+                // In schema evolution scenarios, transaction failures can be critical
+                // We need to fail fast to maintain data consistency
+                IOException commitException =
+                        new IOException(
+                                String.format(
+                                        "Transaction commit failed with %d items requiring re-commit. "
+                                                + "Re-commit is not supported in Flink 1.20. This may cause data inconsistency in schema evolution scenarios.",
+                                        reCommittable.size()));
+
                 // Mark all as failed since we can't re-commit
                 for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
-                    request.signalFailedWithKnownReason(
-                            new IOException(
-                                    "Commit failed and re-commit is not supported in Flink 1.20"));
+                    request.signalFailedWithKnownReason(commitException);
                 }
+
+                // Log the failed global commit for debugging
+                log.error("Failed global commit details: {}", globalCommit);
+
             } else {
                 // All commits succeeded
+                log.debug(
+                        "Global commit succeeded, signaling success for all {} requests",
+                        validRequests.size());
                 for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
                     request.signalAlreadyCommitted();
                 }
-                log.debug(
+                log.info(
                         "Successfully committed {} items using simple aggregated committer",
                         validRequests.size());
             }
 
         } catch (Exception e) {
-            log.error("Error during simple aggregated commit operation", e);
-            // Mark all requests as failed
+            log.error(
+                    "Error during simple aggregated commit operation. This is critical in schema evolution scenarios.",
+                    e);
+
+            // Enhanced error information for debugging schema evolution issues
+            log.error(
+                    "Commit context - Total committables: {}, Valid requests: {}, Commit infos: {}",
+                    committables.size(),
+                    validRequests.size(),
+                    commitInfos.size());
+
+            // Mark all requests as failed with detailed error information
+            IOException detailedException =
+                    new IOException(
+                            String.format(
+                                    "Aggregated commit failed during schema evolution. "
+                                            + "Processed %d committables, %d valid requests. Original error: %s",
+                                    committables.size(), validRequests.size(), e.getMessage()),
+                            e);
+
             for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
-                request.signalFailedWithKnownReason(e);
+                request.signalFailedWithKnownReason(detailedException);
             }
-            throw new IOException("Failed to commit using simple aggregated committer", e);
+
+            // Re-throw with enhanced context
+            throw new IOException(
+                    "Critical failure in aggregated committer during schema evolution", e);
         }
+    }
+
+    /**
+     * Validates commit infos for potential schema evolution issues. This method helps identify
+     * patterns that might indicate schema evolution problems.
+     */
+    private void validateCommitInfosForSchemaEvolution(List<CommT> commitInfos) {
+        if (commitInfos == null || commitInfos.isEmpty()) {
+            return;
+        }
+
+        // Log commit info patterns that might indicate schema evolution
+        if (log.isDebugEnabled()) {
+            log.debug(
+                    "Validating {} commit infos for schema evolution patterns", commitInfos.size());
+
+            // Check for potential schema evolution indicators
+            for (int i = 0; i < commitInfos.size(); i++) {
+                CommT commitInfo = commitInfos.get(i);
+                if (commitInfo != null) {
+                    log.debug("Commit info [{}]: {}", i, commitInfo.toString());
+
+                    // Additional validation can be added here based on specific commit info types
+                    // For example, checking for DDL operations, table structure changes, etc.
+                }
+            }
+        }
+    }
+
+    /** Enhanced combine operation with schema evolution awareness. */
+    private GlobalCommT combineWithSchemaEvolutionSupport(List<CommT> commitInfos)
+            throws Exception {
+        // Validate commit infos before combining
+        validateCommitInfosForSchemaEvolution(commitInfos);
+
+        // Perform the actual combine operation
+        GlobalCommT globalCommit = aggregatedCommitter.combine(commitInfos);
+
+        // Log the result for schema evolution debugging
+        if (globalCommit != null) {
+            log.debug(
+                    "Successfully combined {} commit infos into global commit for schema evolution scenario",
+                    commitInfos.size());
+        } else {
+            log.debug(
+                    "Combine operation returned null - this may be normal for empty commits in schema evolution");
+        }
+
+        return globalCommit;
     }
 
     @Override

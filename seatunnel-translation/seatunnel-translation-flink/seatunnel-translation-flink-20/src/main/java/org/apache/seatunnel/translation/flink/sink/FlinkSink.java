@@ -90,37 +90,32 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
     @Override
     public Committer<CommitWrapper<CommT>> createCommitter(CommitterInitContext context)
             throws IOException {
-        log.debug(
-                "Creating FlinkCommitter for Flink 1.20 with sink: {}",
-                seaTunnelSink.getClass().getSimpleName());
+        log.debug("Creating FlinkCommitter");
 
-        // Priority 1: Try to create SinkCommitter first (most straightforward)
+        // Try to create SinkCommitter first
         if (seaTunnelSink.createCommitter().isPresent()) {
-            log.info(
-                    "Using FlinkCommitter with SinkCommitter for sink: {}",
-                    seaTunnelSink.getClass().getSimpleName());
             return seaTunnelSink
                     .createCommitter()
                     .<Committer<CommitWrapper<CommT>>>map(FlinkCommitter::new)
                     .orElse(null);
         }
 
-        // Priority 2: Try SinkAggregatedCommitter with simplified wrapper
+        // If no SinkCommitter, try SinkAggregatedCommitter with simplified wrapper
         if (seaTunnelSink.createAggregatedCommitter().isPresent()) {
             log.info(
-                    "Using FlinkSimpleAggregatedCommitter to handle aggregated commits in Flink 1.20 for sink: {}",
-                    seaTunnelSink.getClass().getSimpleName());
+                    "Using FlinkSimpleAggregatedCommitter to handle aggregated commits in Flink 1.20");
             return new FlinkSimpleAggregatedCommitter<>(
                     seaTunnelSink.createAggregatedCommitter().get());
         }
 
-        log.warn("No committer found for sink: {}", seaTunnelSink.getClass().getSimpleName());
         return null;
     }
 
     @Override
     public SimpleVersionedSerializer<CommitWrapper<CommT>> getCommittableSerializer() {
         log.debug("Getting committable serializer");
+        // For now, use the simple CommitWrapperSerializer
+        // TODO: In the future, we may need to handle custom serializers like flink-common
         return new CommitWrapperSerializer<>();
     }
 
