@@ -60,7 +60,9 @@ public class TestEmbeddingIT extends TestSuiteBase implements TestResource {
         log.info("Starting up TestEmbeddingIT with mock server setup");
         Optional<URL> resource =
                 Optional.ofNullable(TestEmbeddingIT.class.getResource("/mock-embedding.json"));
-        log.info("Mock embedding config resource: {}", resource.map(URL::toString).orElse("NOT_FOUND"));
+        log.info(
+                "Mock embedding config resource: {}",
+                resource.map(URL::toString).orElse("NOT_FOUND"));
         this.mockserverContainer =
                 new GenericContainer<>(DockerImageName.parse(IMAGE))
                         .withNetwork(NETWORK)
@@ -84,7 +86,9 @@ public class TestEmbeddingIT extends TestSuiteBase implements TestResource {
                         .waitingFor(new HttpWaitStrategy().forPath("/").forStatusCode(404));
         log.info("Starting mock server container");
         Startables.deepStart(Stream.of(mockserverContainer)).join();
-        log.info("Mock server container started successfully on port: {}", mockserverContainer.getMappedPort(1080));
+        log.info(
+                "Mock server container started successfully on port: {}",
+                mockserverContainer.getMappedPort(1080));
     }
 
     @AfterAll
@@ -119,6 +123,19 @@ public class TestEmbeddingIT extends TestSuiteBase implements TestResource {
     public void testEmbeddingWithCustomModel(TestContainer container)
             throws IOException, InterruptedException {
         Container.ExecResult execResult = container.executeJob("/embedding_transform_custom.conf");
+        Assertions.assertEquals(0, execResult.getExitCode());
+    }
+
+    @TestTemplate
+    public void testEmbeddingDebug(TestContainer container)
+            throws IOException, InterruptedException {
+        log.info("Starting testEmbeddingDebug with simplified configuration");
+        Container.ExecResult execResult = container.executeJob("/embedding_transform_debug.conf");
+        log.info("Debug job execution completed with exit code: {}", execResult.getExitCode());
+        if (execResult.getExitCode() != 0) {
+            log.error("Debug job execution failed with stdout: {}", execResult.getStdout());
+            log.error("Debug job execution failed with stderr: {}", execResult.getStderr());
+        }
         Assertions.assertEquals(0, execResult.getExitCode());
     }
 }
