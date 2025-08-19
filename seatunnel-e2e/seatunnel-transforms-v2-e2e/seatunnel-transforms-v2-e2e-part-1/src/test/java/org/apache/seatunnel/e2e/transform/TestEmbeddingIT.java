@@ -36,6 +36,8 @@ import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.DockerLoggerFactory;
 import org.testcontainers.utility.MountableFile;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
@@ -46,6 +48,7 @@ import java.util.stream.Stream;
         value = {},
         type = {EngineType.SPARK},
         disabledReason = "Currently SPARK not support adapt")
+@Slf4j
 public class TestEmbeddingIT extends TestSuiteBase implements TestResource {
     private static final String TMP_DIR = "/tmp";
     private GenericContainer<?> mockserverContainer;
@@ -54,8 +57,10 @@ public class TestEmbeddingIT extends TestSuiteBase implements TestResource {
     @BeforeAll
     @Override
     public void startUp() {
+        log.info("Starting up TestEmbeddingIT with mock server setup");
         Optional<URL> resource =
                 Optional.ofNullable(TestEmbeddingIT.class.getResource("/mock-embedding.json"));
+        log.info("Mock embedding config resource: {}", resource.map(URL::toString).orElse("NOT_FOUND"));
         this.mockserverContainer =
                 new GenericContainer<>(DockerImageName.parse(IMAGE))
                         .withNetwork(NETWORK)
@@ -77,7 +82,9 @@ public class TestEmbeddingIT extends TestSuiteBase implements TestResource {
                         .withEnv("MOCKSERVER_LOG_LEVEL", "WARN")
                         .withLogConsumer(new Slf4jLogConsumer(DockerLoggerFactory.getLogger(IMAGE)))
                         .waitingFor(new HttpWaitStrategy().forPath("/").forStatusCode(404));
+        log.info("Starting mock server container");
         Startables.deepStart(Stream.of(mockserverContainer)).join();
+        log.info("Mock server container started successfully on port: {}", mockserverContainer.getMappedPort(1080));
     }
 
     @AfterAll
@@ -90,7 +97,13 @@ public class TestEmbeddingIT extends TestSuiteBase implements TestResource {
 
     @TestTemplate
     public void testEmbedding(TestContainer container) throws IOException, InterruptedException {
+        log.info("Starting testEmbedding with container: {}", container.getClass().getSimpleName());
         Container.ExecResult execResult = container.executeJob("/embedding_transform.conf");
+        log.info("Job execution completed with exit code: {}", execResult.getExitCode());
+        if (execResult.getExitCode() != 0) {
+            log.error("Job execution failed with stdout: {}", execResult.getStdout());
+            log.error("Job execution failed with stderr: {}", execResult.getStderr());
+        }
         Assertions.assertEquals(0, execResult.getExitCode());
     }
 
