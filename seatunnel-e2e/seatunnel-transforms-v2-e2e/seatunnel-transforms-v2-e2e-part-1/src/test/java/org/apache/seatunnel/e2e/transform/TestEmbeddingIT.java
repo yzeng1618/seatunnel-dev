@@ -55,7 +55,7 @@ public class TestEmbeddingIT extends TestSuiteBase implements TestResource {
     @Override
     public void startUp() {
         Optional<URL> resource =
-                Optional.ofNullable(TestLLMIT.class.getResource("/mock-embedding.json"));
+                Optional.ofNullable(TestEmbeddingIT.class.getResource("/mock-embedding.json"));
         this.mockserverContainer =
                 new GenericContainer<>(DockerImageName.parse(IMAGE))
                         .withNetwork(NETWORK)
