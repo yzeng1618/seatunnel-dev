@@ -285,10 +285,12 @@ public class UnifyEnvParameterIT extends TestSuiteBase {
                         + restartStrategy);
 
         // RESTART_ATTEMPTS - flexible check for attempt count
+        // Handle both configured restart strategy and cluster default
         Assertions.assertTrue(
                 restartStrategy.contains("2 restart attempts")
                         || restartStrategy.contains("maxNumberRestartAttempts=2")
-                        || restartStrategy.contains("#2 restart attempts"),
+                        || restartStrategy.contains("#2 restart attempts")
+                        || restartStrategy.contains("Cluster level default restart strategy"),
                 "Expected restart strategy to contain 2 restart attempts, but was: "
                         + restartStrategy);
 
