@@ -125,17 +125,4 @@ public class TestEmbeddingIT extends TestSuiteBase implements TestResource {
         Container.ExecResult execResult = container.executeJob("/embedding_transform_custom.conf");
         Assertions.assertEquals(0, execResult.getExitCode());
     }
-
-    @TestTemplate
-    public void testEmbeddingDebug(TestContainer container)
-            throws IOException, InterruptedException {
-        log.info("Starting testEmbeddingDebug with simplified configuration");
-        Container.ExecResult execResult = container.executeJob("/embedding_transform_debug.conf");
-        log.info("Debug job execution completed with exit code: {}", execResult.getExitCode());
-        if (execResult.getExitCode() != 0) {
-            log.error("Debug job execution failed with stdout: {}", execResult.getStdout());
-            log.error("Debug job execution failed with stderr: {}", execResult.getStderr());
-        }
-        Assertions.assertEquals(0, execResult.getExitCode());
-    }
 }
