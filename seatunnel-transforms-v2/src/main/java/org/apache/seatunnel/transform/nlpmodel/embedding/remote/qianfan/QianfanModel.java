@@ -102,7 +102,8 @@ public class QianfanModel extends AbstractModel {
         int statusCode = response.getStatusLine().getStatusCode();
         log.info("OAuth response status: {}, response: {}", statusCode, responseStr);
         if (statusCode != 200) {
-            log.error("Failed to get OAuth token, status: {}, response: {}", statusCode, responseStr);
+            log.error(
+                    "Failed to get OAuth token, status: {}, response: {}", statusCode, responseStr);
             throw new IOException("Failed to Oauth for qianfan, response: " + responseStr);
         }
         JsonNode result = OBJECT_MAPPER.readTree(responseStr);
@@ -145,7 +146,10 @@ public class QianfanModel extends AbstractModel {
         log.debug("Embedding API response body: {}", responseStr);
 
         if (statusCode != 200) {
-            log.error("Failed to get vector from qianfan, status: {}, response: {}", statusCode, responseStr);
+            log.error(
+                    "Failed to get vector from qianfan, status: {}, response: {}",
+                    statusCode,
+                    responseStr);
             throw new IOException("Failed to get vector from qianfan, response: " + responseStr);
         }
 
@@ -153,8 +157,10 @@ public class QianfanModel extends AbstractModel {
         JsonNode errorCode = result.get("error_code");
 
         if (errorCode != null) {
-            log.error("Qianfan API returned error code: {}, error message: {}",
-                     errorCode.asInt(), result.get("error_msg"));
+            log.error(
+                    "Qianfan API returned error code: {}, error message: {}",
+                    errorCode.asInt(),
+                    result.get("error_msg"));
             // Handle access token expiration
             if (errorCode.asInt() == 110) {
                 log.info("Access token expired, refreshing token");
