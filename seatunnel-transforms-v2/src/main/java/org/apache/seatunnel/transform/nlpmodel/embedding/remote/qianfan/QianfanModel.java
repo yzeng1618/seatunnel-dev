@@ -34,14 +34,11 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 
-import lombok.extern.slf4j.Slf4j;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-@Slf4j
 public class QianfanModel extends AbstractModel {
 
     private final CloseableHttpClient client;
@@ -69,9 +66,7 @@ public class QianfanModel extends AbstractModel {
         this.apiPath = apiPath;
         this.oauthPath = oauthPath;
         this.client = HttpClients.createDefault();
-        log.info("Initializing QianfanModel with apiPath: {}, oauthPath: {}", apiPath, oauthPath);
         this.accessToken = getAccessToken();
-        log.info("Successfully obtained access token for QianfanModel");
     }
 
     public QianfanModel(
@@ -94,22 +89,14 @@ public class QianfanModel extends AbstractModel {
     }
 
     private String getAccessToken() throws IOException {
-        String oauthUrl = String.format(oauthPath + oauthSuffixPath, apiKey, secretKey);
-        log.info("Requesting OAuth token from: {}", oauthUrl);
-        HttpGet get = new HttpGet(oauthUrl);
+        HttpGet get = new HttpGet(String.format(oauthPath + oauthSuffixPath, apiKey, secretKey));
         CloseableHttpResponse response = client.execute(get);
         String responseStr = EntityUtils.toString(response.getEntity());
-        int statusCode = response.getStatusLine().getStatusCode();
-        log.info("OAuth response status: {}, response: {}", statusCode, responseStr);
-        if (statusCode != 200) {
-            log.error(
-                    "Failed to get OAuth token, status: {}, response: {}", statusCode, responseStr);
+        if (response.getStatusLine().getStatusCode() != 200) {
             throw new IOException("Failed to Oauth for qianfan, response: " + responseStr);
         }
         JsonNode result = OBJECT_MAPPER.readTree(responseStr);
-        String token = result.get("access_token").asText();
-        log.info("Successfully obtained access token");
-        return token;
+        return result.get("access_token").asText();
     }
 
     @Override
@@ -128,28 +115,19 @@ public class QianfanModel extends AbstractModel {
                         (apiPath.endsWith("/") ? apiPath : apiPath + "/") + "%s?access_token=%s",
                         model,
                         accessToken);
-        log.info("Sending embedding request to: {}", formattedApiPath);
-        log.debug("Processing {} fields for vectorization", fields.length);
         HttpPost post = new HttpPost(formattedApiPath);
         post.setHeader("Content-Type", "application/json");
         post.setConfig(
                 RequestConfig.custom().setConnectTimeout(20000).setSocketTimeout(20000).build());
 
-        String requestBody = OBJECT_MAPPER.writeValueAsString(createJsonNodeFromData(fields));
-        log.debug("Request body: {}", requestBody);
-        post.setEntity(new StringEntity(requestBody, "UTF-8"));
+        post.setEntity(
+                new StringEntity(
+                        OBJECT_MAPPER.writeValueAsString(createJsonNodeFromData(fields)), "UTF-8"));
 
         CloseableHttpResponse response = client.execute(post);
         String responseStr = EntityUtils.toString(response.getEntity());
-        int statusCode = response.getStatusLine().getStatusCode();
-        log.info("Embedding API response status: {}", statusCode);
-        log.debug("Embedding API response body: {}", responseStr);
 
-        if (statusCode != 200) {
-            log.error(
-                    "Failed to get vector from qianfan, status: {}, response: {}",
-                    statusCode,
-                    responseStr);
+        if (response.getStatusLine().getStatusCode() != 200) {
             throw new IOException("Failed to get vector from qianfan, response: " + responseStr);
         }
 
@@ -157,13 +135,8 @@ public class QianfanModel extends AbstractModel {
         JsonNode errorCode = result.get("error_code");
 
         if (errorCode != null) {
-            log.error(
-                    "Qianfan API returned error code: {}, error message: {}",
-                    errorCode.asInt(),
-                    result.get("error_msg"));
             // Handle access token expiration
             if (errorCode.asInt() == 110) {
-                log.info("Access token expired, refreshing token");
                 this.accessToken = getAccessToken();
             }
             throw new IOException(
@@ -173,7 +146,6 @@ public class QianfanModel extends AbstractModel {
         List<List<Double>> embeddings = new ArrayList<>();
         JsonNode data = result.get("data");
         if (data.isArray()) {
-            log.info("Processing {} embedding results", data.size());
             for (JsonNode node : data) {
                 List<Double> embedding =
                         OBJECT_MAPPER.readValue(
@@ -181,10 +153,7 @@ public class QianfanModel extends AbstractModel {
                                 new TypeReference<List<Double>>() {});
                 embeddings.add(embedding);
             }
-        } else {
-            log.warn("No data array found in response");
         }
-        log.info("Successfully generated {} embeddings", embeddings.size());
         return embeddings;
     }
 
