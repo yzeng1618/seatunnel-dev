@@ -39,6 +39,7 @@ import org.apache.seatunnel.transform.nlpmodel.llm.LLMTransformConfig;
 
 import lombok.NonNull;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -47,6 +48,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 public class EmbeddingTransform extends MultipleFieldOutputTransform {
 
     private final ReadonlyConfig config;
@@ -74,6 +76,7 @@ public class EmbeddingTransform extends MultipleFieldOutputTransform {
     public void open() {
         // Initialize model
         ModelProvider provider = config.get(ModelTransformConfig.MODEL_PROVIDER);
+        log.info("Initializing Embedding transform with provider: {}", provider);
         try {
             switch (provider) {
                 case CUSTOM:
@@ -171,10 +174,16 @@ public class EmbeddingTransform extends MultipleFieldOutputTransform {
             }
             // Initialize dimension
             dimension = model.dimension();
+            log.info("Successfully initialized Embedding model with dimension: {}", dimension);
         } catch (IOException e) {
+            log.error("Failed to initialize model due to IOException", e);
             throw new RuntimeException("Failed to initialize model", e);
         } catch (URISyntaxException e) {
+            log.error("Failed to initialize model due to URISyntaxException", e);
             throw new RuntimeException(e);
+        } catch (Exception e) {
+            log.error("Failed to initialize model due to unexpected exception", e);
+            throw new RuntimeException("Failed to initialize model", e);
         }
     }
 
@@ -204,9 +213,12 @@ public class EmbeddingTransform extends MultipleFieldOutputTransform {
             for (int i = 0; i < fieldOriginalIndexes.size(); i++) {
                 fieldArray[i] = inputRow.getField(fieldOriginalIndexes.get(i));
             }
+            log.debug("Processing vectorization for {} fields", fieldArray.length);
             List<ByteBuffer> vectorization = model.vectorization(fieldArray);
+            log.debug("Successfully generated {} vectors", vectorization.size());
             return vectorization.toArray();
         } catch (Exception e) {
+            log.error("Failed to data vectorization for input row", e);
             throw new RuntimeException("Failed to data vectorization", e);
         }
     }

@@ -27,32 +27,48 @@ import org.apache.seatunnel.api.sink.SupportResourceShare;
 import org.apache.seatunnel.api.sink.event.WriterCloseEvent;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 
-import org.apache.flink.api.connector.sink2.Sink;
+import org.apache.flink.api.connector.sink2.CommittingSinkWriter;
+import org.apache.flink.api.connector.sink2.StatefulSinkWriter;
+import org.apache.flink.api.connector.sink2.WriterInitContext;
 
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 
 @Slf4j
-public class FlinkSinkWriter
-        implements org.apache.flink.api.connector.sink2.SinkWriter<SeaTunnelRow> {
+public class FlinkSinkWriter<CommT, WriterStateT>
+        implements CommittingSinkWriter<SeaTunnelRow, CommitWrapper<CommT>>,
+                StatefulSinkWriter<SeaTunnelRow, FlinkWriterState<WriterStateT>> {
 
-    private final SinkWriter<SeaTunnelRow, ?, ?> sinkWriter;
+    private final SinkWriter<SeaTunnelRow, CommT, WriterStateT> sinkWriter;
     private final SinkWriter.Context context;
     private final Counter sinkWriteCount;
     private final Counter sinkWriteBytes;
     private final Meter sinkWriterQPS;
     private long checkpointId;
     private MultiTableResourceManager resourceManager;
-    private volatile boolean closed = false;
+    private boolean closed = false;
+    private boolean isMultiTableSink = false;
 
     public FlinkSinkWriter(
-            SinkWriter<SeaTunnelRow, ?, ?> sinkWriter,
-            Sink.InitContext initContext,
+            SinkWriter<SeaTunnelRow, CommT, WriterStateT> sinkWriter,
+            WriterInitContext initContext,
             SinkWriter.Context context) {
+        this(sinkWriter, initContext, context, 1); // Default checkpoint ID
+    }
+
+    public FlinkSinkWriter(
+            SinkWriter<SeaTunnelRow, CommT, WriterStateT> sinkWriter,
+            WriterInitContext initContext,
+            SinkWriter.Context context,
+            long checkpointId) {
         this.sinkWriter = sinkWriter;
         this.context = context;
-        this.checkpointId = 1; // Start from checkpoint 1
+        this.checkpointId = checkpointId;
         MetricsContext metricsContext = context.getMetricsContext();
         this.sinkWriteCount = metricsContext.counter(MetricNames.SINK_WRITE_COUNT);
         this.sinkWriteBytes = metricsContext.counter(MetricNames.SINK_WRITE_BYTES);
@@ -63,6 +79,8 @@ public class FlinkSinkWriter
             resourceManager =
                     ((SupportResourceShare) sinkWriter).initMultiTableResourceManager(1, 1);
             ((SupportResourceShare) sinkWriter).setMultiTableResourceManager(resourceManager, 0);
+            isMultiTableSink = true;
+            log.debug("Multi-table resource manager initialized for sink writer");
         }
     }
 
@@ -81,71 +99,166 @@ public class FlinkSinkWriter
 
     @Override
     public void flush(boolean endOfInput) throws IOException, InterruptedException {
-        synchronized (this) {
-            if (closed) {
-                log.warn("Sink writer is already closed, skipping flush");
-                return;
-            }
+        if (closed) {
+            log.warn("Sink writer is already closed, skipping flush");
+            return;
+        }
 
-            try {
-                // For Flink Sink API 2.0, we need to simulate the checkpoint behavior
-                // that was split between prepareCommit and snapshotState in the old API
+        try {
+            // In Flink 1.20 Sink2 API, flush is called before prepareCommit
+            // We don't need to call snapshotState here as it will be called in snapshotState method
+            log.debug(
+                    "Sink writer flush completed, endOfInput: {}, current checkpointId: {}",
+                    endOfInput,
+                    checkpointId);
+        } catch (Exception e) {
+            log.error("Error during sink writer flush with checkpointId: {}", checkpointId, e);
+            throw new IOException("Failed to flush sink writer", e);
+        }
+    }
 
-                // Step 1: Call prepareCommit with current checkpointId
-                // This prepares the commit and may return commit info for 2PC
-                sinkWriter.prepareCommit(checkpointId);
-                log.debug("Sink writer prepareCommit called with checkpointId: {}", checkpointId);
+    @Override
+    public Collection<CommitWrapper<CommT>> prepareCommit()
+            throws IOException, InterruptedException {
+        if (closed) {
+            log.warn("Sink writer is already closed, returning empty commit collection");
+            return new ArrayList<>();
+        }
 
-                // Step 2: Call snapshotState to finalize the checkpoint
-                // This captures the writer state and completes the checkpoint
-                sinkWriter.snapshotState(checkpointId);
-                log.debug("Sink writer snapshotState called with checkpointId: {}", checkpointId);
+        try {
+            // Call the SeaTunnel sink writer's prepareCommit method
+            // Use the current checkpointId (which should be the one we're preparing for)
+            long currentCheckpointId = this.checkpointId;
+            Optional<CommT> commitInfo = sinkWriter.prepareCommit(currentCheckpointId);
+            log.debug(
+                    "Sink writer prepareCommit called with checkpointId: {}, returned commit info: {}",
+                    currentCheckpointId,
+                    commitInfo.isPresent());
 
-                // Step 3: Increment checkpoint ID for next flush (like in flink-common)
-                this.checkpointId++;
-
+            // Wrap the commit info in CommitWrapper
+            List<CommitWrapper<CommT>> wrappedCommits = new ArrayList<>();
+            if (commitInfo.isPresent()) {
+                CommitWrapper<CommT> wrapper = new CommitWrapper<>(commitInfo.get());
+                wrappedCommits.add(wrapper);
                 log.debug(
-                        "Sink writer flush completed, endOfInput: {}, next checkpointId: {}",
-                        endOfInput,
-                        checkpointId);
-            } catch (Exception e) {
-                log.error("Error during sink writer flush with checkpointId: {}", checkpointId, e);
-                throw new IOException("Failed to flush sink writer", e);
+                        "Created CommitWrapper for checkpointId: {} with commit: {}",
+                        currentCheckpointId,
+                        commitInfo.get());
+
+                // Enhanced logging for schema evolution scenarios
+                if (isMultiTableSink) {
+                    log.debug(
+                            "Multi-table sink prepared commit for checkpointId: {} - this may be part of schema evolution",
+                            currentCheckpointId);
+                }
+            } else {
+                log.debug(
+                        "No commit info to wrap for checkpointId: {} - this is normal for empty checkpoints or schema evolution scenarios",
+                        currentCheckpointId);
+                // For multi-table scenarios and schema evolution, some writers may not have data to
+                // commit
+                // This is normal and should not be treated as an error
+                // However, we should still track this for debugging purposes
+                if (isMultiTableSink) {
+                    log.debug(
+                            "Multi-table sink has no commit info for checkpointId: {} - may indicate schema evolution or empty checkpoint",
+                            currentCheckpointId);
+                }
             }
+
+            return wrappedCommits;
+        } catch (Exception e) {
+            log.error(
+                    "Error during sink writer prepareCommit with checkpointId: {}",
+                    checkpointId,
+                    e);
+            throw new IOException("Failed to prepare commit for sink writer", e);
+        }
+    }
+
+    // StatefulSinkWriter interface method
+    @Override
+    public List<FlinkWriterState<WriterStateT>> snapshotState(long checkpointId)
+            throws IOException {
+        log.debug("Snapshotting state for checkpointId: {}", checkpointId);
+
+        try {
+            // Get state from SeaTunnel sink writer
+            List<WriterStateT> states = sinkWriter.snapshotState(checkpointId);
+
+            // Wrap states in FlinkWriterState
+            List<FlinkWriterState<WriterStateT>> wrappedStates = new ArrayList<>();
+            if (states != null) {
+                for (WriterStateT state : states) {
+                    wrappedStates.add(new FlinkWriterState<>(checkpointId, state));
+                }
+
+                // Enhanced logging for schema evolution scenarios
+                if (isMultiTableSink && !states.isEmpty()) {
+                    log.debug(
+                            "Multi-table sink snapshotted {} states for checkpointId: {} - schema evolution may be in progress",
+                            states.size(),
+                            checkpointId);
+                }
+            } else {
+                log.debug(
+                        "No states to snapshot for checkpointId: {} - this may be normal for schema evolution scenarios",
+                        checkpointId);
+            }
+
+            log.debug(
+                    "Snapshotted {} states for checkpointId: {}",
+                    wrappedStates.size(),
+                    checkpointId);
+
+            // Update internal checkpoint ID for next checkpoint (similar to flink-common)
+            // This is critical for maintaining transaction boundaries in schema evolution scenarios
+            long previousCheckpointId = this.checkpointId;
+            this.checkpointId = checkpointId + 1;
+
+            log.debug(
+                    "Updated internal checkpointId from {} to {} after snapshot",
+                    previousCheckpointId,
+                    this.checkpointId);
+
+            return wrappedStates;
+        } catch (Exception e) {
+            log.error("Error during state snapshot for checkpointId: {}", checkpointId, e);
+            throw new IOException("Failed to snapshot writer state", e);
         }
     }
 
     @Override
     public void close() throws Exception {
-        synchronized (this) {
-            if (!closed) {
-                try {
-                    // Perform final flush before closing to ensure all data is committed
-                    log.debug("Performing final flush before closing sink writer");
-                    flush(true);
-                } catch (Exception e) {
-                    log.warn("Error during final flush before close", e);
-                    // Continue with close even if flush fails
-                }
+        if (closed) {
+            return;
+        }
 
-                try {
-                    sinkWriter.close();
-                    context.getEventListener().onEvent(new WriterCloseEvent());
-                } catch (Exception e) {
-                    log.error("Error closing sink writer: " + e.getMessage(), e);
-                } finally {
-                    closed = true;
-                }
+        try {
+            // Perform final flush before closing to ensure all data is committed
+            log.debug("Performing final flush before closing sink writer");
+            flush(true);
+        } catch (Exception e) {
+            log.warn("Error during final flush before close", e);
+            // Continue with close even if flush fails
+        }
 
-                // Close resource manager
-                try {
-                    if (resourceManager != null) {
-                        resourceManager.close();
-                    }
-                } catch (Throwable e) {
-                    log.error("close resourceManager error", e);
-                }
+        try {
+            sinkWriter.close();
+            context.getEventListener().onEvent(new WriterCloseEvent());
+        } catch (Exception e) {
+            log.error("Error closing sink writer: " + e.getMessage(), e);
+        } finally {
+            closed = true;
+        }
+
+        // Close resource manager
+        try {
+            if (resourceManager != null) {
+                resourceManager.close();
             }
+        } catch (Throwable e) {
+            log.error("close resourceManager error", e);
         }
     }
 }

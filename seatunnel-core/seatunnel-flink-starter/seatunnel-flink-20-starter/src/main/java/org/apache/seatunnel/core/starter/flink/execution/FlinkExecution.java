@@ -57,6 +57,7 @@ public class FlinkExecution implements TaskExecution {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(FlinkExecution.class);
 
+    private final Config config;
     private final FlinkRuntimeEnvironment flinkRuntimeEnvironment;
     private final PluginExecuteProcessor<DataStreamTableInfo, FlinkRuntimeEnvironment>
             sourcePluginExecuteProcessor;
@@ -67,6 +68,7 @@ public class FlinkExecution implements TaskExecution {
     private final List<URL> jarPaths;
 
     public FlinkExecution(Config config) {
+        this.config = config;
         try {
             jarPaths =
                     new ArrayList<>(

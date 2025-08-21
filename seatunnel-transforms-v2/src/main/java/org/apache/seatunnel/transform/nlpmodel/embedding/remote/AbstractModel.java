@@ -23,11 +23,14 @@ import org.apache.seatunnel.common.utils.BufferUtils;
 
 import org.apache.commons.lang3.ArrayUtils;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 public abstract class AbstractModel implements Model {
 
     protected static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -62,6 +65,10 @@ public abstract class AbstractModel implements Model {
             merged.addAll(vector);
         }
         if (array.length != merged.size()) {
+            log.error(
+                    "Vector count mismatch: input array length = {}, merged vectors size = {}",
+                    array.length,
+                    merged.size());
             throw new RuntimeException(
                     "The number of vectors is not equal to the number of inputs, Please verify the configuration of the input field and the result returned.");
         }
