@@ -60,8 +60,6 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
                 (SeaTunnelSink<SeaTunnelRow, WriterStateT, CommT, GlobalCommT>) seaTunnelSink;
         this.catalogTables = catalogTables;
         this.parallelism = parallelism;
-
-        log.info("FlinkSink initialized with parallelism: {}", parallelism);
     }
 
     @Override
@@ -78,7 +76,6 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
 
     @Override
     public SinkWriter<SeaTunnelRow> createWriter(WriterInitContext context) throws IOException {
-        log.info("Creating FlinkSinkWriter with context: {}", context);
         FlinkSinkWriterContext writerContext = new FlinkSinkWriterContext(context, parallelism);
 
         org.apache.seatunnel.api.sink.SinkWriter<SeaTunnelRow, CommT, WriterStateT>
@@ -90,8 +87,6 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
     @Override
     public Committer<CommitWrapper<CommT>> createCommitter(CommitterInitContext context)
             throws IOException {
-        log.debug("Creating FlinkCommitter");
-
         // Try to create SinkCommitter first
         if (seaTunnelSink.createCommitter().isPresent()) {
             return seaTunnelSink
@@ -124,7 +119,6 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
     public StatefulSinkWriter<SeaTunnelRow, FlinkWriterState<WriterStateT>> restoreWriter(
             WriterInitContext context, Collection<FlinkWriterState<WriterStateT>> recoveredState)
             throws IOException {
-        log.info("Restoring FlinkSinkWriter with {} recovered states", recoveredState.size());
         FlinkSinkWriterContext writerContext = new FlinkSinkWriterContext(context, parallelism);
 
         if (recoveredState == null || recoveredState.isEmpty()) {
@@ -152,18 +146,12 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
             // Start from the next checkpoint ID after the maximum recovered checkpoint
             long nextCheckpointId = maxCheckpointId + 1;
 
-            log.info(
-                    "Restored writer with max checkpointId: {}, starting from: {}",
-                    maxCheckpointId,
-                    nextCheckpointId);
-
             return new FlinkSinkWriter<>(seatunnelWriter, context, writerContext, nextCheckpointId);
         }
     }
 
     @Override
     public SimpleVersionedSerializer<FlinkWriterState<WriterStateT>> getWriterStateSerializer() {
-        log.debug("Getting writer state serializer");
         if (seaTunnelSink.getWriterStateSerializer().isPresent()) {
             return new FlinkWriterStateSerializer<>(seaTunnelSink.getWriterStateSerializer().get());
         } else {
