@@ -74,10 +74,6 @@ public class Flink20Container extends AbstractTestFlinkContainer {
     @Override
     protected List<String> getFlinkProperties() {
         // CRITICAL: For Flink 1.20.1, we need to completely replace the config file
-        // instead of appending to it, because SnakeYAML requires the entire file
-        // to start with a YAML document marker.
-        //
-        // We use a special marker that will be processed by our custom startup script
 
         List<String> properties =
                 Arrays.asList(
@@ -107,18 +103,6 @@ public class Flink20Container extends AbstractTestFlinkContainer {
                         "env.java.opts: -Doracle.jdbc.timezoneAsRegion=false",
                         "# SEATUNNEL_FLINK20_CONFIG_REPLACE_END");
 
-        // Debug logging
-        System.out.println("=== Flink20Container Debug Information ===");
-        System.out.println("Docker Image: " + getDockerImage());
-        System.out.println(
-                "Using config replacement mode for Flink 1.20.1 SnakeYAML compatibility");
-        String joinedProperties = String.join("\n", properties);
-        System.out.println("Final FLINK_PROPERTIES environment variable content:");
-        System.out.println("--- START FLINK_PROPERTIES ---");
-        System.out.println(joinedProperties);
-        System.out.println("--- END FLINK_PROPERTIES ---");
-        System.out.println("=== End Debug Information ===");
-
         return properties;
     }
 
@@ -127,9 +111,6 @@ public class Flink20Container extends AbstractTestFlinkContainer {
         // Override startup to handle Flink 1.20.1 specific YAML configuration requirements
         final String dockerImage = getDockerImage();
         final String properties = String.join("\n", getFlinkProperties());
-
-        System.out.println("=== Flink20Container Custom Startup ===");
-        System.out.println("Starting Flink 1.20.1 with custom configuration handling");
 
         jobManager =
                 new org.testcontainers.containers.GenericContainer<>(dockerImage)
@@ -192,7 +173,6 @@ public class Flink20Container extends AbstractTestFlinkContainer {
     }
 
     private String createJobManagerStartupCommand() {
-        // Create a complete startup command for JobManager that avoids shell operator issues
         return createFlink20StartupScript()
                 + "\n"
                 + "echo 'Starting Flink JobManager...'\n"
@@ -200,7 +180,6 @@ public class Flink20Container extends AbstractTestFlinkContainer {
     }
 
     private String createTaskManagerStartupCommand() {
-        // Create a complete startup command for TaskManager that avoids shell operator issues
         return createFlink20StartupScript()
                 + "\n"
                 + "echo 'Starting Flink TaskManager...'\n"
@@ -208,7 +187,6 @@ public class Flink20Container extends AbstractTestFlinkContainer {
     }
 
     private String createFlink20StartupScript() {
-        // Create a script that properly handles YAML configuration replacement
         return "#!/bin/bash\n"
                 + "set -e\n"
                 + "echo 'SeaTunnel Flink 1.20.1 custom startup script'\n"
