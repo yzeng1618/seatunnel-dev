@@ -26,8 +26,10 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerLoggerFactory;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -120,6 +122,11 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
                 new GenericContainer<>(VERTICA_IMAGE)
                         .withNetwork(NETWORK)
                         .withNetworkAliases(VERTICA_CONTAINER_HOST)
+                        .withPrivilegedMode(true)
+                        .withSharedMemorySize(2L * 1024L * 1024L * 1024L) // 2GB shared memory
+                        .waitingFor(
+                                Wait.forLogMessage(".*Vertica is now running.*", 1)
+                                        .withStartupTimeout(Duration.ofMinutes(10)))
                         .withLogConsumer(
                                 new Slf4jLogConsumer(DockerLoggerFactory.getLogger(VERTICA_IMAGE)));
         container.setPortBindings(
