@@ -39,12 +39,13 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
     static {
         System.out.println("========== JdbcVerticaIT 系统环境诊断 ==========");
         System.out.println("Java版本: " + System.getProperty("java.version"));
-        System.out.println("操作系统: " + System.getProperty("os.name") + " " + System.getProperty("os.version"));
+        System.out.println(
+                "操作系统: " + System.getProperty("os.name") + " " + System.getProperty("os.version"));
         System.out.println("可用内存: " + (Runtime.getRuntime().maxMemory() / 1024 / 1024) + "MB");
         System.out.println("Docker环境变量: " + System.getenv("DOCKER_HOST"));
         System.out.println("用户目录: " + System.getProperty("user.home"));
         System.out.println("当前工作目录: " + System.getProperty("user.dir"));
-        
+
         // 检查是否在CI环境中
         String ciEnv = System.getenv("CI");
         if (ciEnv != null) {
@@ -86,7 +87,7 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
         containerEnv.put("TZ", "UTC");
         containerEnv.put("MALLOC_ARENA_MAX", "2");
         containerEnv.put("VERTICA_MEMDEBUG", "1");
-        
+
         String jdbcUrl = String.format(VERTICA_URL, VERTICA_PORT, VERTICA_DATABASE);
         Pair<String[], List<SeaTunnelRow>> testDataSet = initTestData();
         String[] fieldNames = testDataSet.getKey();
@@ -149,41 +150,50 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
             System.out.println("Java版本: " + System.getProperty("java.version"));
             System.out.println("OS: " + System.getProperty("os.name"));
             System.out.println("可用内存: " + (Runtime.getRuntime().maxMemory() / 1024 / 1024) + "MB");
-            
+
             // 基于项目经验的关键配置
             Map<String, String> containerEnv = new HashMap<>();
             containerEnv.put("TZ", "UTC");
             containerEnv.put("MALLOC_ARENA_MAX", "2");
             containerEnv.put("VERTICA_MEMDEBUG", "1");
-            
-            GenericContainer<?> container = new GenericContainer<>(VERTICA_IMAGE)
-                    .withEnv(containerEnv)
-                    .withNetwork(NETWORK)
-                    .withNetworkAliases(VERTICA_CONTAINER_HOST)
-                    .withLogConsumer(new Slf4jLogConsumer(DockerLoggerFactory.getLogger(VERTICA_IMAGE)))
-                    // 关键：基于经验配置内存和特权模式
-                    .withSharedMemorySize(2L * 1024 * 1024 * 1024) // 2GB共享内存
-                    .withPrivilegedMode(true) // 启用特权模式
-                    .withStartupTimeout(java.time.Duration.ofMinutes(10))
-                    // 添加等待策略
-                    .waitingFor(org.testcontainers.containers.wait.strategy.Wait.forLogMessage(".*Vertica is now running.*", 1)
-                        .withStartupTimeout(java.time.Duration.ofMinutes(8)));
-            
+
+            GenericContainer<?> container =
+                    new GenericContainer<>(VERTICA_IMAGE)
+                            .withEnv(containerEnv)
+                            .withNetwork(NETWORK)
+                            .withNetworkAliases(VERTICA_CONTAINER_HOST)
+                            .withLogConsumer(
+                                    new Slf4jLogConsumer(
+                                            DockerLoggerFactory.getLogger(VERTICA_IMAGE)))
+                            // 关键：基于经验配置内存和特权模式
+                            .withSharedMemorySize(2L * 1024 * 1024 * 1024) // 2GB共享内存
+                            .withPrivilegedMode(true) // 启用特权模式
+                            .withStartupTimeout(java.time.Duration.ofMinutes(10))
+                            // 添加等待策略
+                            .waitingFor(
+                                    org.testcontainers.containers.wait.strategy.Wait.forLogMessage(
+                                                    ".*Vertica is now running.*", 1)
+                                            .withStartupTimeout(java.time.Duration.ofMinutes(8)));
+
             container.setPortBindings(
                     Arrays.asList(String.format("%s:%s", VERTICA_PORT, VERTICA_PORT)));
-            
+
             System.out.println("容器配置完成 - 环境变量: " + containerEnv);
             System.out.println("容器配置完成 - 共享内存: 2GB");
             System.out.println("容器配置完成 - 特权模式: true");
             System.out.println("容器配置完成 - 启动超时: 10分钟");
             System.out.println("===============================================");
-            
+
             return container;
-            
+
         } catch (Exception e) {
             System.err.println("容器初始化异常: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             if (e.getCause() != null) {
-                System.err.println("根本原因: " + e.getCause().getClass().getSimpleName() + ": " + e.getCause().getMessage());
+                System.err.println(
+                        "根本原因: "
+                                + e.getCause().getClass().getSimpleName()
+                                + ": "
+                                + e.getCause().getMessage());
             }
             e.printStackTrace();
             throw new RuntimeException("Vertica容器初始化失败", e);
@@ -194,49 +204,55 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
     public String quoteIdentifier(String field) {
         return "\"" + field + "\"";
     }
-    
+
     @Override
     protected void beforeStartUP() {
         System.out.println("========== Vertica容器启动前检查 ==========");
         System.out.println("Docker环境: " + System.getenv("DOCKER_HOST"));
-        
+
         // 检查CI环境
         String ciEnv = System.getenv("CI");
         if (ciEnv != null) {
             System.out.println("CI环境: " + ciEnv);
             System.out.println("构建ID: " + System.getenv("BUILD_ID"));
         }
-        
+
         System.out.println("================================================");
         super.beforeStartUP();
     }
-    
+
     @Override
     protected void initializeJdbcConnection(String jdbcUrl)
             throws SQLException, InstantiationException, IllegalAccessException {
         System.out.println("========== JDBC连接初始化开始 ==========");
         System.out.println("JDBC URL: " + jdbcUrl);
         System.out.println("用户名: " + jdbcCase.getUserName());
-        System.out.println("密码长度: " + (jdbcCase.getPassword() != null ? jdbcCase.getPassword().length() : 0));
-        
+        System.out.println(
+                "密码长度: " + (jdbcCase.getPassword() != null ? jdbcCase.getPassword().length() : 0));
+
         if (dbServer != null) {
             System.out.println("容器状态: " + (dbServer.isRunning() ? "运行中" : "已停止"));
             System.out.println("容器主机: " + dbServer.getHost());
             System.out.println("容器端口: " + dbServer.getMappedPort(VERTICA_PORT));
-            
+
             String actualJdbcUrl = jdbcUrl.replace(HOST, dbServer.getHost());
             System.out.println("实际JDBC URL: " + actualJdbcUrl);
         }
-        
+
         try {
             super.initializeJdbcConnection(jdbcUrl);
             System.out.println("JDBC连接初始化成功");
         } catch (Exception e) {
-            System.err.println("JDBC连接初始化失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            System.err.println(
+                    "JDBC连接初始化失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             if (e.getCause() != null) {
-                System.err.println("JDBC连接失败根本原因: " + e.getCause().getClass().getSimpleName() + ": " + e.getCause().getMessage());
+                System.err.println(
+                        "JDBC连接失败根本原因: "
+                                + e.getCause().getClass().getSimpleName()
+                                + ": "
+                                + e.getCause().getMessage());
             }
-            
+
             // 输出容器日志帮助诊断
             if (dbServer != null && dbServer.isRunning()) {
                 try {
@@ -251,7 +267,7 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
                     System.err.println("获取容器日志失败: " + logException.getMessage());
                 }
             }
-            
+
             System.out.println("================================================");
             throw e;
         }
