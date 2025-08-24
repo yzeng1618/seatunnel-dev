@@ -18,24 +18,42 @@
 
 package org.apache.seatunnel.connectors.seatunnel.jdbc;
 
-import org.apache.seatunnel.shade.com.google.common.collect.Lists;
-
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 
 import org.apache.commons.lang3.tuple.Pair;
 
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
-import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerLoggerFactory;
 
-import java.time.Duration;
+import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class JdbcVerticaIT extends AbstractJdbcIT {
+
+    // 静态初始化块，用于诊断系统环境
+    static {
+        System.out.println("========== JdbcVerticaIT 系统环境诊断 ==========");
+        System.out.println("Java版本: " + System.getProperty("java.version"));
+        System.out.println("操作系统: " + System.getProperty("os.name") + " " + System.getProperty("os.version"));
+        System.out.println("可用内存: " + (Runtime.getRuntime().maxMemory() / 1024 / 1024) + "MB");
+        System.out.println("Docker环境变量: " + System.getenv("DOCKER_HOST"));
+        System.out.println("用户目录: " + System.getProperty("user.home"));
+        System.out.println("当前工作目录: " + System.getProperty("user.dir"));
+        
+        // 检查是否在CI环境中
+        String ciEnv = System.getenv("CI");
+        if (ciEnv != null) {
+            System.out.println("检测到CI环境: " + ciEnv);
+            System.out.println("CI构建ID: " + System.getenv("BUILD_ID"));
+            System.out.println("CI构建URL: " + System.getenv("BUILD_URL"));
+        }
+        System.out.println("===============================================");
+    }
 
     private static final String VERTICA_IMAGE = "vertica/vertica-ce:latest";
     private static final String VERTICA_CONTAINER_HOST = "e2e_vertica";
@@ -52,7 +70,7 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
     private static final String DRIVER_CLASS = "com.vertica.jdbc.Driver";
 
     private static final List<String> CONFIG_FILE =
-            Lists.newArrayList("/jdbc_vertica_source_and_sink.conf");
+            Arrays.asList("/jdbc_vertica_source_and_sink.conf");
     private static final String CREATE_SQL =
             "create table if not exists %s\n"
                     + "(\n"
@@ -64,6 +82,11 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
     @Override
     JdbcCase getJdbcCase() {
         Map<String, String> containerEnv = new HashMap<>();
+        // 基于项目经验配置Vertica容器环境变量
+        containerEnv.put("TZ", "UTC");
+        containerEnv.put("MALLOC_ARENA_MAX", "2");
+        containerEnv.put("VERTICA_MEMDEBUG", "1");
+        
         String jdbcUrl = String.format(VERTICA_URL, VERTICA_PORT, VERTICA_DATABASE);
         Pair<String[], List<SeaTunnelRow>> testDataSet = initTestData();
         String[] fieldNames = testDataSet.getKey();
@@ -118,25 +141,120 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
 
     @Override
     protected GenericContainer<?> initContainer() {
-        GenericContainer<?> container =
-                new GenericContainer<>(VERTICA_IMAGE)
-                        .withNetwork(NETWORK)
-                        .withNetworkAliases(VERTICA_CONTAINER_HOST)
-                        .withPrivilegedMode(true)
-                        .withSharedMemorySize(2L * 1024L * 1024L * 1024L) // 2GB shared memory
-                        .waitingFor(
-                                Wait.forLogMessage(".*Vertica is now running.*", 1)
-                                        .withStartupTimeout(Duration.ofMinutes(10)))
-                        .withLogConsumer(
-                                new Slf4jLogConsumer(DockerLoggerFactory.getLogger(VERTICA_IMAGE)));
-        container.setPortBindings(
-                Lists.newArrayList(String.format("%s:%s", VERTICA_PORT, VERTICA_PORT)));
-
-        return container;
+        try {
+            System.out.println("========== Vertica容器初始化开始 ==========");
+            System.out.println("镜像: " + VERTICA_IMAGE);
+            System.out.println("容器主机: " + VERTICA_CONTAINER_HOST);
+            System.out.println("端口: " + VERTICA_PORT);
+            System.out.println("Java版本: " + System.getProperty("java.version"));
+            System.out.println("OS: " + System.getProperty("os.name"));
+            System.out.println("可用内存: " + (Runtime.getRuntime().maxMemory() / 1024 / 1024) + "MB");
+            
+            // 基于项目经验的关键配置
+            Map<String, String> containerEnv = new HashMap<>();
+            containerEnv.put("TZ", "UTC");
+            containerEnv.put("MALLOC_ARENA_MAX", "2");
+            containerEnv.put("VERTICA_MEMDEBUG", "1");
+            
+            GenericContainer<?> container = new GenericContainer<>(VERTICA_IMAGE)
+                    .withEnv(containerEnv)
+                    .withNetwork(NETWORK)
+                    .withNetworkAliases(VERTICA_CONTAINER_HOST)
+                    .withLogConsumer(new Slf4jLogConsumer(DockerLoggerFactory.getLogger(VERTICA_IMAGE)))
+                    // 关键：基于经验配置内存和特权模式
+                    .withSharedMemorySize(2L * 1024 * 1024 * 1024) // 2GB共享内存
+                    .withPrivilegedMode(true) // 启用特权模式
+                    .withStartupTimeout(java.time.Duration.ofMinutes(10))
+                    // 添加等待策略
+                    .waitingFor(org.testcontainers.containers.wait.strategy.Wait.forLogMessage(".*Vertica is now running.*", 1)
+                        .withStartupTimeout(java.time.Duration.ofMinutes(8)));
+            
+            container.setPortBindings(
+                    Arrays.asList(String.format("%s:%s", VERTICA_PORT, VERTICA_PORT)));
+            
+            System.out.println("容器配置完成 - 环境变量: " + containerEnv);
+            System.out.println("容器配置完成 - 共享内存: 2GB");
+            System.out.println("容器配置完成 - 特权模式: true");
+            System.out.println("容器配置完成 - 启动超时: 10分钟");
+            System.out.println("===============================================");
+            
+            return container;
+            
+        } catch (Exception e) {
+            System.err.println("容器初始化异常: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            if (e.getCause() != null) {
+                System.err.println("根本原因: " + e.getCause().getClass().getSimpleName() + ": " + e.getCause().getMessage());
+            }
+            e.printStackTrace();
+            throw new RuntimeException("Vertica容器初始化失败", e);
+        }
     }
 
     @Override
     public String quoteIdentifier(String field) {
         return "\"" + field + "\"";
+    }
+    
+    @Override
+    protected void beforeStartUP() {
+        System.out.println("========== Vertica容器启动前检查 ==========");
+        System.out.println("Docker环境: " + System.getenv("DOCKER_HOST"));
+        
+        // 检查CI环境
+        String ciEnv = System.getenv("CI");
+        if (ciEnv != null) {
+            System.out.println("CI环境: " + ciEnv);
+            System.out.println("构建ID: " + System.getenv("BUILD_ID"));
+        }
+        
+        System.out.println("================================================");
+        super.beforeStartUP();
+    }
+    
+    @Override
+    protected void initializeJdbcConnection(String jdbcUrl)
+            throws SQLException, InstantiationException, IllegalAccessException {
+        System.out.println("========== JDBC连接初始化开始 ==========");
+        System.out.println("JDBC URL: " + jdbcUrl);
+        System.out.println("用户名: " + jdbcCase.getUserName());
+        System.out.println("密码长度: " + (jdbcCase.getPassword() != null ? jdbcCase.getPassword().length() : 0));
+        
+        if (dbServer != null) {
+            System.out.println("容器状态: " + (dbServer.isRunning() ? "运行中" : "已停止"));
+            System.out.println("容器主机: " + dbServer.getHost());
+            System.out.println("容器端口: " + dbServer.getMappedPort(VERTICA_PORT));
+            
+            String actualJdbcUrl = jdbcUrl.replace(HOST, dbServer.getHost());
+            System.out.println("实际JDBC URL: " + actualJdbcUrl);
+        }
+        
+        try {
+            super.initializeJdbcConnection(jdbcUrl);
+            System.out.println("JDBC连接初始化成功");
+        } catch (Exception e) {
+            System.err.println("JDBC连接初始化失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            if (e.getCause() != null) {
+                System.err.println("JDBC连接失败根本原因: " + e.getCause().getClass().getSimpleName() + ": " + e.getCause().getMessage());
+            }
+            
+            // 输出容器日志帮助诊断
+            if (dbServer != null && dbServer.isRunning()) {
+                try {
+                    System.err.println("容器日志(最后100行):");
+                    String logs = dbServer.getLogs();
+                    String[] logLines = logs.split("\n");
+                    int startIndex = Math.max(0, logLines.length - 100);
+                    for (int i = startIndex; i < logLines.length; i++) {
+                        System.err.println(logLines[i]);
+                    }
+                } catch (Exception logException) {
+                    System.err.println("获取容器日志失败: " + logException.getMessage());
+                }
+            }
+            
+            System.out.println("================================================");
+            throw e;
+        }
+        System.out.println("================================================");
     }
 }
