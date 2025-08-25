@@ -148,8 +148,8 @@ public class Flink20Container extends AbstractTestFlinkContainer {
                                         .withRegEx(".*Starting the resource manager.*")
                                         .withStartupTimeout(java.time.Duration.ofMinutes(2)))
                         .withFileSystemBind(
-                                MOUNTS_PATH,
-                                MOUNTS_PATH,
+                                HOST_VOLUME_MOUNT_PATH,
+                                CONTAINER_VOLUME_MOUNT_PATH,
                                 org.testcontainers.containers.BindMode.READ_WRITE);
 
         copySeaTunnelStarterToContainer(jobManager);
@@ -175,8 +175,8 @@ public class Flink20Container extends AbstractTestFlinkContainer {
                                                 ".*Successful registration at resource manager.*")
                                         .withStartupTimeout(java.time.Duration.ofMinutes(2)))
                         .withFileSystemBind(
-                                MOUNTS_PATH,
-                                MOUNTS_PATH,
+                                HOST_VOLUME_MOUNT_PATH,
+                                CONTAINER_VOLUME_MOUNT_PATH,
                                 org.testcontainers.containers.BindMode.READ_WRITE);
 
         org.testcontainers.lifecycle.Startables.deepStart(java.util.stream.Stream.of(jobManager))
