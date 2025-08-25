@@ -18,6 +18,8 @@
 
 package org.apache.seatunnel.connectors.seatunnel.jdbc;
 
+import org.apache.seatunnel.shade.com.google.common.collect.Lists;
+
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 
 import org.apache.commons.lang3.tuple.Pair;
@@ -27,9 +29,7 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.utility.DockerLoggerFactory;
 
-import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,31 +37,6 @@ import java.util.Map;
 @Disabled(
         "Disabled until Vertica image is available, please follow https://github.com/vertica/vertica-containers/issues/64")
 public class JdbcVerticaIT extends AbstractJdbcIT {
-
-    // Static initialization block for system environment diagnostics
-    static {
-        System.out.println("========== JdbcVerticaIT System Environment Diagnosis ==========");
-        System.out.println("Java Version: " + System.getProperty("java.version"));
-        System.out.println(
-                "Operating System: "
-                        + System.getProperty("os.name")
-                        + " "
-                        + System.getProperty("os.version"));
-        System.out.println(
-                "Available Memory: " + (Runtime.getRuntime().maxMemory() / 1024 / 1024) + "MB");
-        System.out.println("Docker Environment Variable: " + System.getenv("DOCKER_HOST"));
-        System.out.println("User Home Directory: " + System.getProperty("user.home"));
-        System.out.println("Current Working Directory: " + System.getProperty("user.dir"));
-
-        // Check if in CI environment
-        String ciEnv = System.getenv("CI");
-        if (ciEnv != null) {
-            System.out.println("CI Environment Detected: " + ciEnv);
-            System.out.println("CI Build ID: " + System.getenv("BUILD_ID"));
-            System.out.println("CI Build URL: " + System.getenv("BUILD_URL"));
-        }
-        System.out.println("===============================================");
-    }
 
     private static final String VERTICA_IMAGE = "vertica/vertica-ce:latest";
     private static final String VERTICA_CONTAINER_HOST = "e2e_vertica";
@@ -78,7 +53,7 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
     private static final String DRIVER_CLASS = "com.vertica.jdbc.Driver";
 
     private static final List<String> CONFIG_FILE =
-            Arrays.asList("/jdbc_vertica_source_and_sink.conf");
+            Lists.newArrayList("/jdbc_vertica_source_and_sink.conf");
     private static final String CREATE_SQL =
             "create table if not exists %s\n"
                     + "(\n"
@@ -90,10 +65,6 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
     @Override
     JdbcCase getJdbcCase() {
         Map<String, String> containerEnv = new HashMap<>();
-        containerEnv.put("TZ", "UTC");
-        containerEnv.put("MALLOC_ARENA_MAX", "2");
-        containerEnv.put("VERTICA_MEMDEBUG", "1");
-
         String jdbcUrl = String.format(VERTICA_URL, VERTICA_PORT, VERTICA_DATABASE);
         Pair<String[], List<SeaTunnelRow>> testDataSet = initTestData();
         String[] fieldNames = testDataSet.getKey();
@@ -148,109 +119,20 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
 
     @Override
     protected GenericContainer<?> initContainer() {
-        try {
-            System.out.println("Initializing Vertica container: " + VERTICA_IMAGE);
+        GenericContainer<?> container =
+                new GenericContainer<>(VERTICA_IMAGE)
+                        .withNetwork(NETWORK)
+                        .withNetworkAliases(VERTICA_CONTAINER_HOST)
+                        .withLogConsumer(
+                                new Slf4jLogConsumer(DockerLoggerFactory.getLogger(VERTICA_IMAGE)));
+        container.setPortBindings(
+                Lists.newArrayList(String.format("%s:%s", VERTICA_PORT, VERTICA_PORT)));
 
-            // Critical configuration based on project experience
-            Map<String, String> containerEnv = new HashMap<>();
-            containerEnv.put("TZ", "UTC");
-            containerEnv.put("MALLOC_ARENA_MAX", "2");
-            containerEnv.put("VERTICA_MEMDEBUG", "1");
-
-            GenericContainer<?> container =
-                    new GenericContainer<>(VERTICA_IMAGE)
-                            .withEnv(containerEnv)
-                            .withNetwork(NETWORK)
-                            .withNetworkAliases(VERTICA_CONTAINER_HOST)
-                            .withLogConsumer(
-                                    new Slf4jLogConsumer(
-                                            DockerLoggerFactory.getLogger(VERTICA_IMAGE)))
-                            // Key: Configure memory and privileged mode based on experience
-                            .withSharedMemorySize(2L * 1024 * 1024 * 1024) // 2GB shared memory
-                            .withPrivilegedMode(true) // Enable privileged mode
-                            .withStartupTimeout(java.time.Duration.ofMinutes(10))
-                            // Add wait strategy
-                            .waitingFor(
-                                    org.testcontainers.containers.wait.strategy.Wait.forLogMessage(
-                                                    ".*Vertica is now running.*", 1)
-                                            .withStartupTimeout(java.time.Duration.ofMinutes(8)));
-
-            container.setPortBindings(
-                    Arrays.asList(String.format("%s:%s", VERTICA_PORT, VERTICA_PORT)));
-
-            System.out.println("Vertica container configured successfully");
-            return container;
-
-        } catch (Exception e) {
-            System.err.println(
-                    "Container Initialization Exception: "
-                            + e.getClass().getSimpleName()
-                            + ": "
-                            + e.getMessage());
-            if (e.getCause() != null) {
-                System.err.println(
-                        "Root Cause: "
-                                + e.getCause().getClass().getSimpleName()
-                                + ": "
-                                + e.getCause().getMessage());
-            }
-            e.printStackTrace();
-            throw new RuntimeException("Vertica Container Initialization Failed", e);
-        }
+        return container;
     }
 
     @Override
     public String quoteIdentifier(String field) {
         return "\"" + field + "\"";
-    }
-
-    @Override
-    protected void beforeStartUP() {
-        System.out.println("========== Vertica Container Pre-Startup Check ==========");
-        System.out.println("Docker Environment: " + System.getenv("DOCKER_HOST"));
-
-        // Check CI environment
-        String ciEnv = System.getenv("CI");
-        if (ciEnv != null) {
-            System.out.println("CI Environment: " + ciEnv);
-            System.out.println("Build ID: " + System.getenv("BUILD_ID"));
-        }
-
-        System.out.println("================================================");
-        super.beforeStartUP();
-    }
-
-    @Override
-    protected void initializeJdbcConnection(String jdbcUrl)
-            throws SQLException, InstantiationException, IllegalAccessException {
-        System.out.println("========== JDBC Connection Initialization Start ==========");
-        System.out.println("JDBC URL: " + jdbcUrl);
-        System.out.println("Username: " + jdbcCase.getUserName());
-        System.out.println(
-                "Password Length: "
-                        + (jdbcCase.getPassword() != null ? jdbcCase.getPassword().length() : 0));
-
-        try {
-            super.initializeJdbcConnection(jdbcUrl);
-        } catch (Exception e) {
-            System.err.println("JDBC Connection Failed: " + e.getMessage());
-
-            // Output container logs for diagnosis on failure
-            if (dbServer != null && dbServer.isRunning()) {
-                try {
-                    String logs = dbServer.getLogs();
-                    String[] logLines = logs.split("\n");
-                    int startIndex = Math.max(0, logLines.length - 20); // Only last 20 lines
-                    System.err.println("Container logs (last 20 lines):");
-                    for (int i = startIndex; i < logLines.length; i++) {
-                        System.err.println(logLines[i]);
-                    }
-                } catch (Exception logException) {
-                    System.err.println(
-                            "Failed to retrieve container logs: " + logException.getMessage());
-                }
-            }
-            throw e;
-        }
     }
 }
