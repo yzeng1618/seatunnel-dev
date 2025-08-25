@@ -171,7 +171,7 @@ public class FlinkExecution implements TaskExecution {
                             Common.getThirdPartyJars(
                                     envConfig.getString(EnvCommonOptions.JARS.key())));
         }
-        thirdPartyJars.addAll(Common.getPluginsJarDependencies());
+        thirdPartyJars.addAll(Common.getPluginsJarDependenciesWithoutConnectorDependency());
         List<URL> jarDependencies =
                 Stream.concat(thirdPartyJars.stream(), Common.getLibJars().stream())
                         .map(Path::toUri)
