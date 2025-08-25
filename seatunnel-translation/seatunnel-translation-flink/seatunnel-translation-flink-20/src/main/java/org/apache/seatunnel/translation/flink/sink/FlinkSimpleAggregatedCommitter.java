@@ -45,7 +45,6 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
             SinkAggregatedCommitter<CommT, GlobalCommT> aggregatedCommitter) {
         this.aggregatedCommitter = aggregatedCommitter;
 
-        // Initialize resource manager if supported
         if (aggregatedCommitter instanceof SupportResourceShare) {
             @SuppressWarnings("unchecked")
             SupportResourceShare<Object> supportCommitter =
@@ -54,12 +53,9 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
             supportCommitter.setMultiTableResourceManager(resourceManager, 0);
         }
 
-        // Initialize the aggregated committer
         try {
             aggregatedCommitter.init();
-            log.debug("FlinkSimpleAggregatedCommitter initialized");
         } catch (Exception e) {
-            log.error("Failed to initialize aggregated committer", e);
             throw new RuntimeException("Failed to initialize aggregated committer", e);
         }
     }
@@ -68,16 +64,8 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
     public void commit(Collection<Committer.CommitRequest<CommitWrapper<CommT>>> committables)
             throws IOException, InterruptedException {
         if (committables == null || committables.isEmpty()) {
-            log.debug("No committables to commit - this is normal for some scenarios");
-            // Even when committables is empty, we should not return directly
-            // because Flink may still expect us to handle the commit request properly
-            // However, since there are no committables, there's nothing to process
             return;
         }
-
-        log.debug(
-                "Committing {} committables using simple aggregated committer",
-                committables.size());
 
         // Enhanced logging for schema evolution scenarios
         if (log.isDebugEnabled()) {
@@ -151,10 +139,6 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
                     aggregatedCommitter.commit(java.util.Collections.singletonList(globalCommit));
 
             if (reCommittable != null && !reCommittable.isEmpty()) {
-                // IMPORTANT: Following the same pattern as Flink-Common
-                // In Flink-Common, re-committable items are logged but ignored (always returns
-                // empty list)
-                // We should do the same to maintain compatibility and avoid unnecessary failures
                 log.warn(
                         "Aggregated committer returned {} items for re-commit. "
                                 + "Following Flink-Common pattern: logging but treating as successful. "
@@ -167,9 +151,6 @@ public class FlinkSimpleAggregatedCommitter<CommT, GlobalCommT>
                     log.debug("Original global commit: {}", globalCommit);
                 }
 
-                // CRITICAL: Unlike our previous implementation, we treat this as SUCCESS
-                // This matches the behavior of Flink-Common which ignores re-committable items
-                // All commits are considered successful, following the established pattern
                 for (Committer.CommitRequest<CommitWrapper<CommT>> request : validRequests) {
                     request.signalAlreadyCommitted();
                 }

@@ -58,7 +58,7 @@ public class FlinkSinkWriter<CommT, WriterStateT>
             SinkWriter<SeaTunnelRow, CommT, WriterStateT> sinkWriter,
             WriterInitContext initContext,
             SinkWriter.Context context) {
-        this(sinkWriter, initContext, context, 1); // Default checkpoint ID
+        this(sinkWriter, initContext, context, 1);
     }
 
     public FlinkSinkWriter(
@@ -74,13 +74,11 @@ public class FlinkSinkWriter<CommT, WriterStateT>
         this.sinkWriteBytes = metricsContext.counter(MetricNames.SINK_WRITE_BYTES);
         this.sinkWriterQPS = metricsContext.meter(MetricNames.SINK_WRITE_QPS);
 
-        // Initialize resource manager if supported
         if (sinkWriter instanceof SupportResourceShare) {
             resourceManager =
                     ((SupportResourceShare) sinkWriter).initMultiTableResourceManager(1, 1);
             ((SupportResourceShare) sinkWriter).setMultiTableResourceManager(resourceManager, 0);
             isMultiTableSink = true;
-            log.debug("Multi-table resource manager initialized for sink writer");
         }
     }
 
@@ -100,20 +98,7 @@ public class FlinkSinkWriter<CommT, WriterStateT>
     @Override
     public void flush(boolean endOfInput) throws IOException, InterruptedException {
         if (closed) {
-            log.warn("Sink writer is already closed, skipping flush");
             return;
-        }
-
-        try {
-            // In Flink 1.20 Sink2 API, flush is called before prepareCommit
-            // We don't need to call snapshotState here as it will be called in snapshotState method
-            log.debug(
-                    "Sink writer flush completed, endOfInput: {}, current checkpointId: {}",
-                    endOfInput,
-                    checkpointId);
-        } catch (Exception e) {
-            log.error("Error during sink writer flush with checkpointId: {}", checkpointId, e);
-            throw new IOException("Failed to flush sink writer", e);
         }
     }
 
@@ -121,89 +106,32 @@ public class FlinkSinkWriter<CommT, WriterStateT>
     public Collection<CommitWrapper<CommT>> prepareCommit()
             throws IOException, InterruptedException {
         if (closed) {
-            log.warn("Sink writer is already closed, returning empty commit collection");
             return new ArrayList<>();
         }
 
         try {
-            // Call the SeaTunnel sink writer's prepareCommit method
-            // Use the current checkpointId (which should be the one we're preparing for)
-            long currentCheckpointId = this.checkpointId;
-            Optional<CommT> commitInfo = sinkWriter.prepareCommit(currentCheckpointId);
-            log.debug(
-                    "Sink writer prepareCommit called with checkpointId: {}, returned commit info: {}",
-                    currentCheckpointId,
-                    commitInfo.isPresent());
+            Optional<CommT> commitInfo = sinkWriter.prepareCommit(this.checkpointId);
 
-            // Wrap the commit info in CommitWrapper
             List<CommitWrapper<CommT>> wrappedCommits = new ArrayList<>();
             if (commitInfo.isPresent()) {
-                CommitWrapper<CommT> wrapper = new CommitWrapper<>(commitInfo.get());
-                wrappedCommits.add(wrapper);
-                log.debug(
-                        "Created CommitWrapper for checkpointId: {} with commit: {}",
-                        currentCheckpointId,
-                        commitInfo.get());
-
-                // Enhanced logging for schema evolution scenarios
-                if (isMultiTableSink) {
-                    log.debug(
-                            "Multi-table sink prepared commit for checkpointId: {} - this may be part of schema evolution",
-                            currentCheckpointId);
-                }
-            } else {
-                log.debug(
-                        "No commit info to wrap for checkpointId: {} - this is normal for empty checkpoints or schema evolution scenarios",
-                        currentCheckpointId);
-                // For multi-table scenarios and schema evolution, some writers may not have data to
-                // commit
-                // This is normal and should not be treated as an error
-                // However, we should still track this for debugging purposes
-                if (isMultiTableSink) {
-                    log.debug(
-                            "Multi-table sink has no commit info for checkpointId: {} - may indicate schema evolution or empty checkpoint",
-                            currentCheckpointId);
-                }
+                wrappedCommits.add(new CommitWrapper<>(commitInfo.get()));
             }
-
             return wrappedCommits;
         } catch (Exception e) {
-            log.error(
-                    "Error during sink writer prepareCommit with checkpointId: {}",
-                    checkpointId,
-                    e);
             throw new IOException("Failed to prepare commit for sink writer", e);
         }
     }
 
-    // StatefulSinkWriter interface method
     @Override
     public List<FlinkWriterState<WriterStateT>> snapshotState(long checkpointId)
             throws IOException {
-        log.debug("Snapshotting state for checkpointId: {}", checkpointId);
-
         try {
-            // Get state from SeaTunnel sink writer
             List<WriterStateT> states = sinkWriter.snapshotState(checkpointId);
-
-            // Wrap states in FlinkWriterState
             List<FlinkWriterState<WriterStateT>> wrappedStates = new ArrayList<>();
             if (states != null) {
                 for (WriterStateT state : states) {
                     wrappedStates.add(new FlinkWriterState<>(checkpointId, state));
                 }
-
-                // Enhanced logging for schema evolution scenarios
-                if (isMultiTableSink && !states.isEmpty()) {
-                    log.debug(
-                            "Multi-table sink snapshotted {} states for checkpointId: {} - schema evolution may be in progress",
-                            states.size(),
-                            checkpointId);
-                }
-            } else {
-                log.debug(
-                        "No states to snapshot for checkpointId: {} - this may be normal for schema evolution scenarios",
-                        checkpointId);
             }
 
             log.debug(

@@ -34,14 +34,11 @@ import org.apache.flink.api.connector.sink2.SupportsWriterState;
 import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
-import lombok.extern.slf4j.Slf4j;
-
 import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Slf4j
 public class FlinkSink<CommT, WriterStateT, GlobalCommT>
         implements Sink<SeaTunnelRow>,
                 SupportsCommitter<CommitWrapper<CommT>>,
@@ -95,10 +92,7 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
                     .orElse(null);
         }
 
-        // If no SinkCommitter, try SinkAggregatedCommitter with simplified wrapper
         if (seaTunnelSink.createAggregatedCommitter().isPresent()) {
-            log.info(
-                    "Using FlinkSimpleAggregatedCommitter to handle aggregated commits in Flink 1.20");
             return new FlinkSimpleAggregatedCommitter<>(
                     seaTunnelSink.createAggregatedCommitter().get());
         }
@@ -108,9 +102,6 @@ public class FlinkSink<CommT, WriterStateT, GlobalCommT>
 
     @Override
     public SimpleVersionedSerializer<CommitWrapper<CommT>> getCommittableSerializer() {
-        log.debug("Getting committable serializer");
-        // For now, use the simple CommitWrapperSerializer
-        // TODO: In the future, we may need to handle custom serializers like flink-common
         return new CommitWrapperSerializer<>();
     }
 

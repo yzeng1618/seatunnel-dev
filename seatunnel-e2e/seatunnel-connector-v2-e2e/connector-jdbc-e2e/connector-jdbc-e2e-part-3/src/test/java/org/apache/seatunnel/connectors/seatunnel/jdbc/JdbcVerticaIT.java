@@ -35,23 +35,27 @@ import java.util.Map;
 
 public class JdbcVerticaIT extends AbstractJdbcIT {
 
-    // 静态初始化块，用于诊断系统环境
+    // Static initialization block for system environment diagnostics
     static {
-        System.out.println("========== JdbcVerticaIT 系统环境诊断 ==========");
-        System.out.println("Java版本: " + System.getProperty("java.version"));
+        System.out.println("========== JdbcVerticaIT System Environment Diagnosis ==========");
+        System.out.println("Java Version: " + System.getProperty("java.version"));
         System.out.println(
-                "操作系统: " + System.getProperty("os.name") + " " + System.getProperty("os.version"));
-        System.out.println("可用内存: " + (Runtime.getRuntime().maxMemory() / 1024 / 1024) + "MB");
-        System.out.println("Docker环境变量: " + System.getenv("DOCKER_HOST"));
-        System.out.println("用户目录: " + System.getProperty("user.home"));
-        System.out.println("当前工作目录: " + System.getProperty("user.dir"));
+                "Operating System: "
+                        + System.getProperty("os.name")
+                        + " "
+                        + System.getProperty("os.version"));
+        System.out.println(
+                "Available Memory: " + (Runtime.getRuntime().maxMemory() / 1024 / 1024) + "MB");
+        System.out.println("Docker Environment Variable: " + System.getenv("DOCKER_HOST"));
+        System.out.println("User Home Directory: " + System.getProperty("user.home"));
+        System.out.println("Current Working Directory: " + System.getProperty("user.dir"));
 
-        // 检查是否在CI环境中
+        // Check if in CI environment
         String ciEnv = System.getenv("CI");
         if (ciEnv != null) {
-            System.out.println("检测到CI环境: " + ciEnv);
-            System.out.println("CI构建ID: " + System.getenv("BUILD_ID"));
-            System.out.println("CI构建URL: " + System.getenv("BUILD_URL"));
+            System.out.println("CI Environment Detected: " + ciEnv);
+            System.out.println("CI Build ID: " + System.getenv("BUILD_ID"));
+            System.out.println("CI Build URL: " + System.getenv("BUILD_URL"));
         }
         System.out.println("===============================================");
     }
@@ -83,7 +87,6 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
     @Override
     JdbcCase getJdbcCase() {
         Map<String, String> containerEnv = new HashMap<>();
-        // 基于项目经验配置Vertica容器环境变量
         containerEnv.put("TZ", "UTC");
         containerEnv.put("MALLOC_ARENA_MAX", "2");
         containerEnv.put("VERTICA_MEMDEBUG", "1");
@@ -143,15 +146,9 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
     @Override
     protected GenericContainer<?> initContainer() {
         try {
-            System.out.println("========== Vertica容器初始化开始 ==========");
-            System.out.println("镜像: " + VERTICA_IMAGE);
-            System.out.println("容器主机: " + VERTICA_CONTAINER_HOST);
-            System.out.println("端口: " + VERTICA_PORT);
-            System.out.println("Java版本: " + System.getProperty("java.version"));
-            System.out.println("OS: " + System.getProperty("os.name"));
-            System.out.println("可用内存: " + (Runtime.getRuntime().maxMemory() / 1024 / 1024) + "MB");
+            System.out.println("Initializing Vertica container: " + VERTICA_IMAGE);
 
-            // 基于项目经验的关键配置
+            // Critical configuration based on project experience
             Map<String, String> containerEnv = new HashMap<>();
             containerEnv.put("TZ", "UTC");
             containerEnv.put("MALLOC_ARENA_MAX", "2");
@@ -165,11 +162,11 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
                             .withLogConsumer(
                                     new Slf4jLogConsumer(
                                             DockerLoggerFactory.getLogger(VERTICA_IMAGE)))
-                            // 关键：基于经验配置内存和特权模式
-                            .withSharedMemorySize(2L * 1024 * 1024 * 1024) // 2GB共享内存
-                            .withPrivilegedMode(true) // 启用特权模式
+                            // Key: Configure memory and privileged mode based on experience
+                            .withSharedMemorySize(2L * 1024 * 1024 * 1024) // 2GB shared memory
+                            .withPrivilegedMode(true) // Enable privileged mode
                             .withStartupTimeout(java.time.Duration.ofMinutes(10))
-                            // 添加等待策略
+                            // Add wait strategy
                             .waitingFor(
                                     org.testcontainers.containers.wait.strategy.Wait.forLogMessage(
                                                     ".*Vertica is now running.*", 1)
@@ -178,25 +175,24 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
             container.setPortBindings(
                     Arrays.asList(String.format("%s:%s", VERTICA_PORT, VERTICA_PORT)));
 
-            System.out.println("容器配置完成 - 环境变量: " + containerEnv);
-            System.out.println("容器配置完成 - 共享内存: 2GB");
-            System.out.println("容器配置完成 - 特权模式: true");
-            System.out.println("容器配置完成 - 启动超时: 10分钟");
-            System.out.println("===============================================");
-
+            System.out.println("Vertica container configured successfully");
             return container;
 
         } catch (Exception e) {
-            System.err.println("容器初始化异常: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            System.err.println(
+                    "Container Initialization Exception: "
+                            + e.getClass().getSimpleName()
+                            + ": "
+                            + e.getMessage());
             if (e.getCause() != null) {
                 System.err.println(
-                        "根本原因: "
+                        "Root Cause: "
                                 + e.getCause().getClass().getSimpleName()
                                 + ": "
                                 + e.getCause().getMessage());
             }
             e.printStackTrace();
-            throw new RuntimeException("Vertica容器初始化失败", e);
+            throw new RuntimeException("Vertica Container Initialization Failed", e);
         }
     }
 
@@ -207,14 +203,14 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
 
     @Override
     protected void beforeStartUP() {
-        System.out.println("========== Vertica容器启动前检查 ==========");
-        System.out.println("Docker环境: " + System.getenv("DOCKER_HOST"));
+        System.out.println("========== Vertica Container Pre-Startup Check ==========");
+        System.out.println("Docker Environment: " + System.getenv("DOCKER_HOST"));
 
-        // 检查CI环境
+        // Check CI environment
         String ciEnv = System.getenv("CI");
         if (ciEnv != null) {
-            System.out.println("CI环境: " + ciEnv);
-            System.out.println("构建ID: " + System.getenv("BUILD_ID"));
+            System.out.println("CI Environment: " + ciEnv);
+            System.out.println("Build ID: " + System.getenv("BUILD_ID"));
         }
 
         System.out.println("================================================");
@@ -224,53 +220,34 @@ public class JdbcVerticaIT extends AbstractJdbcIT {
     @Override
     protected void initializeJdbcConnection(String jdbcUrl)
             throws SQLException, InstantiationException, IllegalAccessException {
-        System.out.println("========== JDBC连接初始化开始 ==========");
+        System.out.println("========== JDBC Connection Initialization Start ==========");
         System.out.println("JDBC URL: " + jdbcUrl);
-        System.out.println("用户名: " + jdbcCase.getUserName());
+        System.out.println("Username: " + jdbcCase.getUserName());
         System.out.println(
-                "密码长度: " + (jdbcCase.getPassword() != null ? jdbcCase.getPassword().length() : 0));
-
-        if (dbServer != null) {
-            System.out.println("容器状态: " + (dbServer.isRunning() ? "运行中" : "已停止"));
-            System.out.println("容器主机: " + dbServer.getHost());
-            System.out.println("容器端口: " + dbServer.getMappedPort(VERTICA_PORT));
-
-            String actualJdbcUrl = jdbcUrl.replace(HOST, dbServer.getHost());
-            System.out.println("实际JDBC URL: " + actualJdbcUrl);
-        }
+                "Password Length: "
+                        + (jdbcCase.getPassword() != null ? jdbcCase.getPassword().length() : 0));
 
         try {
             super.initializeJdbcConnection(jdbcUrl);
-            System.out.println("JDBC连接初始化成功");
         } catch (Exception e) {
-            System.err.println(
-                    "JDBC连接初始化失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-            if (e.getCause() != null) {
-                System.err.println(
-                        "JDBC连接失败根本原因: "
-                                + e.getCause().getClass().getSimpleName()
-                                + ": "
-                                + e.getCause().getMessage());
-            }
+            System.err.println("JDBC Connection Failed: " + e.getMessage());
 
-            // 输出容器日志帮助诊断
+            // Output container logs for diagnosis on failure
             if (dbServer != null && dbServer.isRunning()) {
                 try {
-                    System.err.println("容器日志(最后100行):");
                     String logs = dbServer.getLogs();
                     String[] logLines = logs.split("\n");
-                    int startIndex = Math.max(0, logLines.length - 100);
+                    int startIndex = Math.max(0, logLines.length - 20); // Only last 20 lines
+                    System.err.println("Container logs (last 20 lines):");
                     for (int i = startIndex; i < logLines.length; i++) {
                         System.err.println(logLines[i]);
                     }
                 } catch (Exception logException) {
-                    System.err.println("获取容器日志失败: " + logException.getMessage());
+                    System.err.println(
+                            "Failed to retrieve container logs: " + logException.getMessage());
                 }
             }
-
-            System.out.println("================================================");
             throw e;
         }
-        System.out.println("================================================");
     }
 }

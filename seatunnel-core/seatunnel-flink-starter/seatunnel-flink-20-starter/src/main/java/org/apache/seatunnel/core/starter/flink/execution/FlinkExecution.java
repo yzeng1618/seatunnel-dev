@@ -26,7 +26,6 @@ import org.apache.seatunnel.api.options.EnvCommonOptions;
 import org.apache.seatunnel.common.Constants;
 import org.apache.seatunnel.common.config.Common;
 import org.apache.seatunnel.common.config.TypesafeConfigUtils;
-import org.apache.seatunnel.common.constants.JobMode;
 import org.apache.seatunnel.common.utils.SeaTunnelException;
 import org.apache.seatunnel.core.starter.exception.TaskExecuteException;
 import org.apache.seatunnel.core.starter.execution.PluginExecuteProcessor;
@@ -108,13 +107,10 @@ public class FlinkExecution implements TaskExecution {
         this.sourcePluginExecuteProcessor.setRuntimeEnvironment(flinkRuntimeEnvironment);
         this.transformPluginExecuteProcessor.setRuntimeEnvironment(flinkRuntimeEnvironment);
         this.sinkPluginExecuteProcessor.setRuntimeEnvironment(flinkRuntimeEnvironment);
-
-        LOGGER.info("Initialized Flink 1.20 execution environment");
     }
 
     @Override
     public void execute() throws TaskExecuteException {
-        LOGGER.info("Executing Flink 1.20 job");
 
         List<DataStreamTableInfo> dataStreams = new ArrayList<>();
         dataStreams = sourcePluginExecuteProcessor.execute(dataStreams);
@@ -128,7 +124,6 @@ public class FlinkExecution implements TaskExecution {
             flinkRuntimeEnvironment
                     .getStreamExecutionEnvironment()
                     .setRuntimeMode(RuntimeExecutionMode.BATCH);
-            LOGGER.info("Flink job Mode: {}", JobMode.BATCH);
         }
         try {
             final long jobStartTime = System.currentTimeMillis();
@@ -150,10 +145,6 @@ public class FlinkExecution implements TaskExecution {
     protected FlinkJobMetricsSummary createFlink20JobMetricsSummary(
             JobExecutionResult jobResult, long jobStartTime, long jobEndTime) {
         String jobId = jobResult.getJobID().toString();
-
-        LOGGER.info(
-                "Flink 1.20 specific FlinkJobMetricsSummary, Available accumulators: {}",
-                jobResult.getAllAccumulatorResults().keySet());
 
         String metricPrefix = "seatunnel.metric." + jobId + ".";
         System.getProperties().stringPropertyNames().stream()

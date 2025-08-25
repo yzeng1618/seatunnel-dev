@@ -44,9 +44,6 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
         this.initContext = initContext;
         this.parallelism = parallelism;
         this.eventListener = new DefaultEventProcessor(getFlinkJobId(initContext));
-        log.info(
-                "FlinkSinkWriterContext initialized with parallelism: {} for Flink 1.20+",
-                parallelism);
     }
 
     @Override
@@ -68,11 +65,9 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
             if (runtimeContext != null && metricGroup != null) {
                 return new FlinkMetricContext(runtimeContext, metricGroup);
             } else {
-                log.warn("RuntimeContext or MetricGroup is null, using fallback");
                 return new FlinkMetricContext(metricGroup);
             }
         } catch (Exception e) {
-            log.warn("Failed to create metrics context", e);
             return new FlinkMetricContext((MetricGroup) null);
         }
     }
@@ -84,10 +79,6 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
 
     public RuntimeContext getRuntimeContext() {
         try {
-            log.debug(
-                    "Attempting to get RuntimeContext from InitContext: {}",
-                    initContext.getClass().getName());
-
             RuntimeContext runtimeContext = tryGetFromFields(initContext);
             if (runtimeContext != null) {
                 return runtimeContext;
@@ -103,13 +94,9 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
                 return runtimeContext;
             }
 
-            log.warn(
-                    "Failed to obtain RuntimeContext from InitContext: {}",
-                    initContext.getClass().getName());
             return null;
 
         } catch (Exception e) {
-            log.warn("Failed to get RuntimeContext via reflection", e);
             return null;
         }
     }

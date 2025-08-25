@@ -42,20 +42,14 @@ public class FlinkCommitter<CommT> implements Committer<CommitWrapper<CommT>> {
 
     public FlinkCommitter(SinkCommitter<CommT> sinkCommitter) {
         this.sinkCommitter = sinkCommitter;
-        log.debug(
-                "FlinkCommitter created with SeaTunnel SinkCommitter: {}",
-                sinkCommitter.getClass().getSimpleName());
     }
 
     @Override
     public void commit(Collection<Committer.CommitRequest<CommitWrapper<CommT>>> committables)
             throws IOException, InterruptedException {
         if (committables == null || committables.isEmpty()) {
-            log.debug("No committables to commit");
             return;
         }
-
-        log.debug("Committing {} committables", committables.size());
 
         // Extract commit info from CommitRequest wrappers
         List<CommT> commitInfos =
@@ -87,7 +81,6 @@ public class FlinkCommitter<CommT> implements Committer<CommitWrapper<CommT>> {
                 for (Committer.CommitRequest<CommitWrapper<CommT>> request : committables) {
                     request.signalAlreadyCommitted();
                 }
-                log.debug("Successfully committed {} items", committables.size());
             }
         } catch (Exception e) {
             log.error("Error during commit operation", e);
@@ -100,8 +93,5 @@ public class FlinkCommitter<CommT> implements Committer<CommitWrapper<CommT>> {
     }
 
     @Override
-    public void close() throws Exception {
-        log.debug("Closing FlinkCommitter");
-        // SinkCommitter doesn't have a close method, so nothing to do here
-    }
+    public void close() throws Exception {}
 }

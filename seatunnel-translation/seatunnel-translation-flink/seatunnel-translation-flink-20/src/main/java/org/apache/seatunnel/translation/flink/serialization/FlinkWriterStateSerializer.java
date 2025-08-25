@@ -44,7 +44,7 @@ public class FlinkWriterStateSerializer<T>
 
     @Override
     public int getVersion() {
-        return 1; // Version 1 for Flink 1.20 compatibility
+        return 1;
     }
 
     @Override
