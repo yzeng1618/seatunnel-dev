@@ -18,11 +18,19 @@
 package org.apache.seatunnel.core.starter.flink;
 
 import org.apache.seatunnel.common.constants.EngineType;
+import org.apache.seatunnel.core.starter.SeaTunnel;
 import org.apache.seatunnel.core.starter.exception.CommandException;
+import org.apache.seatunnel.core.starter.flink.args.FlinkCommandArgs;
+import org.apache.seatunnel.core.starter.utils.CommandLineUtils;
 
-/** SeaTunnel Flink 1.20 main entry point. */
-public class SeaTunnelFlink extends AbstractSeaTunnelFlink {
-    public static void main(String[] args) throws CommandException {
-        runSeaTunnel(args, EngineType.FLINK20);
+/** Abstract base class for SeaTunnel Flink main entry points. */
+public abstract class AbstractSeaTunnelFlink {
+
+    protected static void runSeaTunnel(String[] args, EngineType engineType)
+            throws CommandException {
+        FlinkCommandArgs flinkCommandArgs =
+                CommandLineUtils.parse(
+                        args, new FlinkCommandArgs(), engineType.getStarterShellName(), true);
+        SeaTunnel.run(flinkCommandArgs.buildCommand());
     }
 }
