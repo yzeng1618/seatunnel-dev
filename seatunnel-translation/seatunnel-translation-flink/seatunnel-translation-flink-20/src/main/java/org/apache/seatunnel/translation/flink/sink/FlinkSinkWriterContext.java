@@ -26,11 +26,9 @@ import org.apache.seatunnel.translation.flink.metric.FlinkMetricContext;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 
 import lombok.extern.slf4j.Slf4j;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 @Slf4j
@@ -79,23 +77,7 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
 
     public RuntimeContext getRuntimeContext() {
         try {
-            RuntimeContext runtimeContext = tryGetFromFields(initContext);
-            if (runtimeContext != null) {
-                return runtimeContext;
-            }
-
-            runtimeContext = tryGetFromInitContextBase(initContext);
-            if (runtimeContext != null) {
-                return runtimeContext;
-            }
-
-            runtimeContext = tryGetFromWrapper(initContext);
-            if (runtimeContext != null) {
-                return runtimeContext;
-            }
-
-            return null;
-
+            return tryGetFromInitContextBase(initContext);
         } catch (Exception e) {
             return null;
         }
@@ -119,72 +101,6 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
             }
         } catch (Exception e) {
             log.debug("Failed to get RuntimeContext from InitContextBase", e);
-        }
-        return null;
-    }
-
-    private RuntimeContext tryGetFromWrapper(Object context) {
-        try {
-            String[] possibleFieldNames = {
-                "delegate", "wrapped", "context", "initContext", "writerInitContext"
-            };
-
-            Class<?> contextClass = context.getClass();
-            for (String fieldName : possibleFieldNames) {
-                try {
-                    Field field = contextClass.getDeclaredField(fieldName);
-                    field.setAccessible(true);
-                    Object wrappedContext = field.get(context);
-
-                    if (wrappedContext != null) {
-                        log.debug(
-                                "Found wrapped context in field '{}': {}",
-                                fieldName,
-                                wrappedContext.getClass().getName());
-
-                        RuntimeContext runtimeContext = tryGetFromInitContextBase(wrappedContext);
-                        if (runtimeContext != null) {
-                            log.info(
-                                    "Successfully obtained RuntimeContext from wrapped context: {}",
-                                    runtimeContext.getClass().getName());
-                            return runtimeContext;
-                        }
-                    }
-                } catch (NoSuchFieldException ignored) {
-                    log.debug(
-                            "Field '{}' not found in class '{}'",
-                            fieldName,
-                            contextClass.getName());
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Failed to get RuntimeContext from wrapper", e);
-        }
-        return null;
-    }
-
-    private RuntimeContext tryGetFromFields(Object context) {
-        try {
-            Class<?> contextClass = context.getClass();
-            Field[] fields = contextClass.getDeclaredFields();
-
-            for (Field field : fields) {
-                if (RuntimeContext.class.isAssignableFrom(field.getType())
-                        || StreamingRuntimeContext.class.isAssignableFrom(field.getType())) {
-
-                    field.setAccessible(true);
-                    RuntimeContext runtimeContext = (RuntimeContext) field.get(context);
-                    if (runtimeContext != null) {
-                        log.info(
-                                "Successfully obtained RuntimeContext from field '{}': {}",
-                                field.getName(),
-                                runtimeContext.getClass().getName());
-                        return runtimeContext;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Failed to get RuntimeContext from fields", e);
         }
         return null;
     }

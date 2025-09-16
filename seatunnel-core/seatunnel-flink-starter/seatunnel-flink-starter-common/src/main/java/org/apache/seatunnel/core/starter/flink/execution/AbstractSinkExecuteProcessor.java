@@ -45,7 +45,8 @@ import org.apache.seatunnel.plugin.discovery.seatunnel.SeaTunnelSinkPluginDiscov
 
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URL;
 import java.util.HashMap;
@@ -60,9 +61,11 @@ import static org.apache.seatunnel.api.options.ConnectorCommonOptions.PLUGIN_NAM
 import static org.apache.seatunnel.api.table.factory.FactoryUtil.discoverOptionalFactory;
 
 /** Abstract base class for Sink execute processors. */
-@Slf4j
 public abstract class AbstractSinkExecuteProcessor
         extends FlinkAbstractPluginExecuteProcessor<Optional<? extends Factory>> {
+
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(AbstractSinkExecuteProcessor.class);
 
     protected AbstractSinkExecuteProcessor(
             List<URL> jarPaths,
@@ -180,7 +183,7 @@ public abstract class AbstractSinkExecuteProcessor
             ReadonlyConfig sinkConfig,
             ClassLoader classLoader) {
         if (sinks.values().stream().anyMatch(sink -> !(sink instanceof SupportMultiTableSink))) {
-            log.info("Unsupported multi table sink api, rollback to sink template");
+            LOGGER.info("Unsupported multi table sink api, rollback to sink template");
             // choose the first sink
             return sinks.values().iterator().next();
         }

@@ -26,13 +26,10 @@ import org.apache.seatunnel.translation.flink.sink.FlinkSink;
 
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 
-import lombok.extern.slf4j.Slf4j;
-
 import java.net.URL;
 import java.util.List;
 
 /** Sink execute processor for Flink 1.20. */
-@Slf4j
 public class SinkExecuteProcessor extends AbstractSinkExecuteProcessor {
 
     protected SinkExecuteProcessor(
