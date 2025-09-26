@@ -158,6 +158,24 @@ public abstract class AbstractJdbcRowConverter implements JdbcRowConverter {
                                         .atOffset(java.time.ZoneOffset.UTC);
                         break;
                     }
+                    try {
+                        String s = tzObj.toString();
+                        try {
+                            fields[fieldIndex] = java.time.OffsetDateTime.parse(s);
+                        } catch (Exception e) {
+                            try {
+                                fields[fieldIndex] =
+                                        java.time.OffsetDateTime.parse(s.replace(' ', 'T'));
+                            } catch (Exception e2) {
+                                fields[fieldIndex] =
+                                        java.time.Instant.parse(s)
+                                                .atOffset(java.time.ZoneOffset.UTC);
+                            }
+                        }
+                        break;
+                    } catch (Exception ignore) {
+                        // fallthrough to unsupported error below
+                    }
                     throw CommonError.unsupportedDataType(
                             converterName(), SqlType.TIMESTAMP_TZ.toString(), fieldName);
                 case BYTES:
