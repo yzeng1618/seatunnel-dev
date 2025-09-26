@@ -163,6 +163,43 @@ public class SeaTunnelRowDebeziumDeserializationConverters implements Serializab
                 return convertToTime();
             case TIMESTAMP:
                 return convertToTimestamp(serverTimeZone);
+            case TIMESTAMP_TZ:
+                return new DebeziumDeserializationConverter() {
+                    private static final long serialVersionUID = 1L;
+
+                    @Override
+                    public Object convert(Object dbzObj, Schema schema) {
+                        if (dbzObj instanceof String) {
+                            String s = (String) dbzObj;
+                            try {
+                                return java.time.OffsetDateTime.parse(s);
+                            } catch (Exception e) {
+                                try {
+                                    return java.time.OffsetDateTime.parse(s.replace(' ', 'T'));
+                                } catch (Exception e2) {
+                                    return java.time.Instant.parse(s)
+                                            .atOffset(java.time.ZoneOffset.UTC);
+                                }
+                            }
+                        } else if (dbzObj instanceof java.time.OffsetDateTime) {
+                            return dbzObj;
+                        } else if (dbzObj instanceof java.time.Instant) {
+                            return ((java.time.Instant) dbzObj).atOffset(java.time.ZoneOffset.UTC);
+                        } else if (dbzObj instanceof Long) {
+                            return java.time.Instant.ofEpochMilli((Long) dbzObj)
+                                    .atOffset(java.time.ZoneOffset.UTC);
+                        } else if (dbzObj instanceof java.util.Date) {
+                            return ((java.util.Date) dbzObj)
+                                    .toInstant()
+                                    .atOffset(java.time.ZoneOffset.UTC);
+                        }
+                        throw new IllegalArgumentException(
+                                "Unable to convert to OffsetDateTime from unexpected value '"
+                                        + dbzObj
+                                        + "' of type "
+                                        + dbzObj.getClass().getName());
+                    }
+                };
             case FLOAT:
                 return wrapNumericConverter(convertToFloat());
             case DOUBLE:
