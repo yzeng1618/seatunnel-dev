@@ -43,17 +43,6 @@ public class FlinkExecution extends AbstractFlinkExecution {
 
     protected FlinkJobMetricsSummary createFlink20JobMetricsSummary(
             JobExecutionResult jobResult, long jobStartTime, long jobEndTime) {
-        String jobId = jobResult.getJobID().toString();
-
-        String metricPrefix = "seatunnel.metric." + jobId + ".";
-        System.getProperties().stringPropertyNames().stream()
-                .filter(name -> name.startsWith(metricPrefix))
-                .forEach(
-                        name ->
-                                LOGGER.info(
-                                        "System property metric: {} = {}",
-                                        name,
-                                        System.getProperty(name)));
 
         return FlinkJobMetricsSummary.builder()
                 .jobExecutionResult(jobResult)

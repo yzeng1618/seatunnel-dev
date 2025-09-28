@@ -93,7 +93,7 @@ public class FlinkMetricContext implements MetricsContext {
                 }
             }
 
-            Counter counter = new FlinkCounter(flinkCounter);
+            Counter counter = new FlinkCounter(name, flinkCounter);
             counters.put(name, counter);
             return counter;
         } catch (Exception e) {
@@ -125,7 +125,7 @@ public class FlinkMetricContext implements MetricsContext {
         try {
             org.apache.flink.metrics.Meter flinkMeter =
                     metricGroup.meter(name, new org.apache.flink.metrics.MeterView(60));
-            Meter meter = new FlinkMeter(flinkMeter);
+            Meter meter = new FlinkMeter(name, flinkMeter);
             meters.put(name, meter);
             return meter;
         } catch (Exception e) {

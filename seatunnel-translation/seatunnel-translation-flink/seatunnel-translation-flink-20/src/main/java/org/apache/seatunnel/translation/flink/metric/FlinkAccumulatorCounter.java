@@ -32,7 +32,8 @@ public class FlinkAccumulatorCounter implements Counter {
     private final org.apache.flink.metrics.Counter flinkCounter;
     private final LongCounter accumulator;
     private final RuntimeContext runtimeContext;
-    private volatile long localCount = 0L;
+    private final java.util.concurrent.atomic.AtomicLong localCount =
+            new java.util.concurrent.atomic.AtomicLong(0L);
 
     public FlinkAccumulatorCounter(
             String name,
@@ -58,19 +59,11 @@ public class FlinkAccumulatorCounter implements Counter {
 
     @Override
     public void inc(long n) {
-        try {
-            if (flinkCounter != null) {
-                flinkCounter.inc(n);
-            }
-
-            accumulator.add(n);
-
-            localCount += n;
-
-        } catch (Exception e) {
-            log.warn("Error incrementing counter {}", name);
-            localCount += n;
+        if (flinkCounter != null) {
+            flinkCounter.inc(n);
         }
+        accumulator.add(n);
+        localCount.addAndGet(n);
     }
 
     @Override
@@ -80,52 +73,31 @@ public class FlinkAccumulatorCounter implements Counter {
 
     @Override
     public void dec(long n) {
-        try {
-            if (flinkCounter != null) {
-                flinkCounter.inc(-n);
-            }
-
-            accumulator.add(-n);
-
-            localCount -= n;
-
-        } catch (Exception e) {
-            log.warn("Error decrementing counter {}", name);
-            localCount -= n;
+        if (flinkCounter != null) {
+            flinkCounter.inc(-n);
         }
+        accumulator.add(-n);
+        localCount.addAndGet(-n);
     }
 
     @Override
     public void set(long n) {
-        try {
-            long diff = n - localCount;
-
-            if (flinkCounter != null) {
-                flinkCounter.inc(diff);
-            }
-
-            accumulator.add(diff);
-            localCount = n;
-
-            // Counter set successfully
-        } catch (Exception e) {
-            log.warn("Error setting counter {}", name);
-            localCount = n;
+        long current = localCount.get();
+        long diff = n - current;
+        if (flinkCounter != null) {
+            flinkCounter.inc(diff);
         }
+        accumulator.add(diff);
+        localCount.set(n);
     }
 
     @Override
     public long getCount() {
-        try {
-            long accumulatorValue = accumulator.getLocalValue();
-            if (accumulatorValue != localCount) {
-                localCount = accumulatorValue;
-            }
-            return accumulatorValue;
-        } catch (Exception e) {
-            log.warn("Failed to get accumulator value, using local count: {}", localCount);
-            return localCount;
+        long accumulatorValue = accumulator.getLocalValue();
+        if (accumulatorValue != localCount.get()) {
+            localCount.set(accumulatorValue);
         }
+        return accumulatorValue;
     }
 
     @Override
@@ -143,13 +115,9 @@ public class FlinkAccumulatorCounter implements Counter {
     }
 
     public void sync() {
-        try {
-            long accumulatorValue = accumulator.getLocalValue();
-            if (accumulatorValue != localCount) {
-                localCount = accumulatorValue;
-            }
-        } catch (Exception e) {
-            log.warn("Failed to sync counter [{}]", name);
+        long accumulatorValue = accumulator.getLocalValue();
+        if (accumulatorValue != localCount.get()) {
+            localCount.set(accumulatorValue);
         }
     }
 
