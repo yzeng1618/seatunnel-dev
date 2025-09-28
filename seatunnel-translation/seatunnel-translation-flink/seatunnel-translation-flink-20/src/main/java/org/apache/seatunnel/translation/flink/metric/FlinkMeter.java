@@ -22,9 +22,11 @@ import org.apache.seatunnel.api.common.metrics.Unit;
 
 /** Flink implementation of SeaTunnel Meter metric. */
 public class FlinkMeter implements Meter {
+    private final String name;
     private final org.apache.flink.metrics.Meter flinkMeter;
 
-    public FlinkMeter(org.apache.flink.metrics.Meter flinkMeter) {
+    public FlinkMeter(String name, org.apache.flink.metrics.Meter flinkMeter) {
+        this.name = name;
         this.flinkMeter = flinkMeter;
     }
 
@@ -45,12 +47,12 @@ public class FlinkMeter implements Meter {
 
     @Override
     public long getCount() {
-        return 0;
+        return flinkMeter.getCount();
     }
 
     @Override
     public String name() {
-        return "";
+        return name;
     }
 
     @Override
