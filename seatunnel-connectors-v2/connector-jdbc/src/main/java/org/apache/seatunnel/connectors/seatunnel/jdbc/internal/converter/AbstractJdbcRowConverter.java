@@ -126,15 +126,51 @@ public abstract class AbstractJdbcRowConverter implements JdbcRowConverter {
                         fields[fieldIndex] = null;
                         break;
                     }
+
+                    // Handle OffsetDateTime directly
                     if (tzObj instanceof OffsetDateTime) {
                         fields[fieldIndex] = tzObj;
                         break;
                     }
+
+                    // Handle ZonedDateTime
+                    if (tzObj instanceof java.time.ZonedDateTime) {
+                        fields[fieldIndex] = ((java.time.ZonedDateTime) tzObj).toOffsetDateTime();
+                        break;
+                    }
+
+                    // Handle Instant
+                    if (tzObj instanceof java.time.Instant) {
+                        fields[fieldIndex] =
+                                ((java.time.Instant) tzObj).atOffset(java.time.ZoneOffset.UTC);
+                        break;
+                    }
+
+                    // Handle Timestamp
                     if (tzObj instanceof Timestamp) {
                         fields[fieldIndex] =
                                 ((Timestamp) tzObj).toInstant().atOffset(java.time.ZoneOffset.UTC);
                         break;
                     }
+
+                    // Handle java.util.Date
+                    if (tzObj instanceof java.util.Date) {
+                        fields[fieldIndex] =
+                                ((java.util.Date) tzObj)
+                                        .toInstant()
+                                        .atOffset(java.time.ZoneOffset.UTC);
+                        break;
+                    }
+
+                    // Handle Long (epoch milliseconds)
+                    if (tzObj instanceof Long) {
+                        fields[fieldIndex] =
+                                java.time.Instant.ofEpochMilli((Long) tzObj)
+                                        .atOffset(java.time.ZoneOffset.UTC);
+                        break;
+                    }
+
+                    // Handle String representations
                     if (tzObj instanceof String) {
                         String s = (String) tzObj;
                         try {
@@ -144,20 +180,29 @@ public abstract class AbstractJdbcRowConverter implements JdbcRowConverter {
                                 fields[fieldIndex] =
                                         java.time.OffsetDateTime.parse(s.replace(' ', 'T'));
                             } catch (Exception e2) {
-                                fields[fieldIndex] =
-                                        java.time.Instant.parse(s)
-                                                .atOffset(java.time.ZoneOffset.UTC);
+                                try {
+                                    fields[fieldIndex] =
+                                            java.time.Instant.parse(s)
+                                                    .atOffset(java.time.ZoneOffset.UTC);
+                                } catch (Exception e3) {
+                                    // Try parsing as LocalDateTime and assume UTC
+                                    try {
+                                        java.time.LocalDateTime ldt =
+                                                java.time.LocalDateTime.parse(s.replace(' ', 'T'));
+                                        fields[fieldIndex] = ldt.atOffset(java.time.ZoneOffset.UTC);
+                                    } catch (Exception e4) {
+                                        throw CommonError.unsupportedDataType(
+                                                converterName(),
+                                                SqlType.TIMESTAMP_TZ.toString(),
+                                                fieldName);
+                                    }
+                                }
                             }
                         }
                         break;
                     }
-                    if (tzObj instanceof java.util.Date) {
-                        fields[fieldIndex] =
-                                ((java.util.Date) tzObj)
-                                        .toInstant()
-                                        .atOffset(java.time.ZoneOffset.UTC);
-                        break;
-                    }
+
+                    // Last resort: try to convert toString() representation
                     try {
                         String s = tzObj.toString();
                         try {
@@ -167,17 +212,24 @@ public abstract class AbstractJdbcRowConverter implements JdbcRowConverter {
                                 fields[fieldIndex] =
                                         java.time.OffsetDateTime.parse(s.replace(' ', 'T'));
                             } catch (Exception e2) {
-                                fields[fieldIndex] =
-                                        java.time.Instant.parse(s)
-                                                .atOffset(java.time.ZoneOffset.UTC);
+                                try {
+                                    fields[fieldIndex] =
+                                            java.time.Instant.parse(s)
+                                                    .atOffset(java.time.ZoneOffset.UTC);
+                                } catch (Exception e3) {
+                                    // Try parsing as LocalDateTime and assume UTC
+                                    java.time.LocalDateTime ldt =
+                                            java.time.LocalDateTime.parse(s.replace(' ', 'T'));
+                                    fields[fieldIndex] = ldt.atOffset(java.time.ZoneOffset.UTC);
+                                }
                             }
                         }
                         break;
                     } catch (Exception ignore) {
-                        // fallthrough to unsupported error below
+                        // If all parsing attempts fail, throw unsupported error
+                        throw CommonError.unsupportedDataType(
+                                converterName(), SqlType.TIMESTAMP_TZ.toString(), fieldName);
                     }
-                    throw CommonError.unsupportedDataType(
-                            converterName(), SqlType.TIMESTAMP_TZ.toString(), fieldName);
                 case BYTES:
                     fields[fieldIndex] = JdbcFieldTypeUtils.getBytes(rs, resultSetIndex);
                     break;
