@@ -26,14 +26,26 @@ import org.apache.flink.api.common.functions.RuntimeContext;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @Slf4j
 public class FlinkAccumulatorCounter implements Counter {
+
+    private static final Map<String, String> METRIC_NAME_MAPPINGS = new HashMap<>();
+
+    static {
+        // Initialize standard metric name mappings
+        METRIC_NAME_MAPPINGS.put("SinkWriteCount", MetricNames.SINK_WRITE_COUNT);
+        METRIC_NAME_MAPPINGS.put("SinkWriteBytes", MetricNames.SINK_WRITE_BYTES);
+        METRIC_NAME_MAPPINGS.put("SourceReceivedCount", MetricNames.SOURCE_RECEIVED_COUNT);
+        METRIC_NAME_MAPPINGS.put("SourceReceivedBytes", MetricNames.SOURCE_RECEIVED_BYTES);
+    }
+
     private final String name;
     private final org.apache.flink.metrics.Counter flinkCounter;
     private final LongCounter accumulator;
     private final RuntimeContext runtimeContext;
-    private final java.util.concurrent.atomic.AtomicLong localCount =
-            new java.util.concurrent.atomic.AtomicLong(0L);
 
     public FlinkAccumulatorCounter(
             String name,
@@ -64,11 +76,9 @@ public class FlinkAccumulatorCounter implements Counter {
                 flinkCounter.inc(n);
             }
             accumulator.add(n);
-            localCount.addAndGet(n);
         } catch (Exception e) {
             log.warn("Error incrementing counter {}: {}", name, e.getMessage());
             accumulator.add(n);
-            localCount.addAndGet(n);
         }
     }
 
@@ -84,44 +94,35 @@ public class FlinkAccumulatorCounter implements Counter {
                 flinkCounter.inc(-n);
             }
             accumulator.add(-n);
-            localCount.addAndGet(-n);
         } catch (Exception e) {
             log.warn("Error decrementing counter {}: {}", name, e.getMessage());
             accumulator.add(-n);
-            localCount.addAndGet(-n);
         }
     }
 
     @Override
     public void set(long n) {
         try {
-            long current = localCount.get();
+            long current = accumulator.getLocalValue();
             long diff = n - current;
             if (flinkCounter != null) {
                 flinkCounter.inc(diff);
             }
             accumulator.add(diff);
-            localCount.set(n);
         } catch (Exception e) {
             log.warn("Error setting counter {}: {}", name, e.getMessage());
-            localCount.set(n);
+            accumulator.resetLocal();
+            accumulator.add(n);
         }
     }
 
     @Override
     public long getCount() {
         try {
-            long accumulatorValue = accumulator.getLocalValue();
-            if (accumulatorValue != localCount.get()) {
-                localCount.set(accumulatorValue);
-            }
-            return accumulatorValue;
+            return accumulator.getLocalValue();
         } catch (Exception e) {
-            log.warn(
-                    "Failed to get accumulator value for counter {}, using local count: {}",
-                    name,
-                    localCount.get());
-            return localCount.get();
+            log.warn("Failed to get accumulator value for counter {}", name);
+            return 0L;
         }
     }
 
@@ -139,31 +140,17 @@ public class FlinkAccumulatorCounter implements Counter {
         return accumulator;
     }
 
-    public void sync() {
-        try {
-            long accumulatorValue = accumulator.getLocalValue();
-            if (accumulatorValue != localCount.get()) {
-                localCount.set(accumulatorValue);
-            }
-        } catch (Exception e) {
-            log.warn("Failed to sync counter [{}]: {}", name, e.getMessage());
-        }
-    }
-
     private String getStandardAccumulatorName(String originalName) {
-        if (originalName.contains("SinkWriteCount")
-                || originalName.equals(MetricNames.SINK_WRITE_COUNT)) {
-            return MetricNames.SINK_WRITE_COUNT;
-        } else if (originalName.contains("SinkWriteBytes")
-                || originalName.equals(MetricNames.SINK_WRITE_BYTES)) {
-            return MetricNames.SINK_WRITE_BYTES;
-        } else if (originalName.contains("SourceReceivedCount")
-                || originalName.equals(MetricNames.SOURCE_RECEIVED_COUNT)) {
-            return MetricNames.SOURCE_RECEIVED_COUNT;
-        } else if (originalName.contains("SourceReceivedBytes")
-                || originalName.equals(MetricNames.SOURCE_RECEIVED_BYTES)) {
-            return MetricNames.SOURCE_RECEIVED_BYTES;
+        if (METRIC_NAME_MAPPINGS.containsValue(originalName)) {
+            return originalName;
         }
+
+        for (Map.Entry<String, String> entry : METRIC_NAME_MAPPINGS.entrySet()) {
+            if (originalName.contains(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+
         return originalName;
     }
 }

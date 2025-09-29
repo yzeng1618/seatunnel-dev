@@ -68,40 +68,24 @@ public class FlinkMetricContext implements MetricsContext {
             return existingCounter;
         }
 
-        if (metricGroup == null) {
-            Counter noOpCounter = new NoOpCounter();
-            counters.put(name, noOpCounter);
-            return noOpCounter;
-        }
+        org.apache.flink.metrics.Counter flinkCounter = metricGroup.counter(name);
 
-        try {
-            org.apache.flink.metrics.Counter flinkCounter = metricGroup.counter(name);
-
-            if (isKeyMetric(name) && generalRuntimeContext != null) {
-                try {
-                    String counterName = name;
-                    org.apache.flink.metrics.Counter fCounter = flinkCounter;
-                    RuntimeContext rContext = generalRuntimeContext;
-
-                    Counter counter = new FlinkAccumulatorCounter(counterName, fCounter, rContext);
-                    counters.put(name, counter);
-                    return counter;
-                } catch (Exception e) {
-                    log.warn(
-                            "Failed to create accumulator for: {}, falling back to simple counter",
-                            name);
-                }
+        if (isKeyMetric(name) && generalRuntimeContext != null) {
+            try {
+                Counter counter =
+                        new FlinkAccumulatorCounter(name, flinkCounter, generalRuntimeContext);
+                counters.put(name, counter);
+                return counter;
+            } catch (Exception e) {
+                log.warn(
+                        "Failed to create accumulator for: {}, falling back to simple counter",
+                        name);
             }
-
-            Counter counter = new FlinkCounter(name, flinkCounter);
-            counters.put(name, counter);
-            return counter;
-        } catch (Exception e) {
-            log.warn("Failed to create counter: {}, returning no-op counter", name);
-            Counter noOpCounter = new NoOpCounter();
-            counters.put(name, noOpCounter);
-            return noOpCounter;
         }
+
+        Counter counter = new FlinkCounter(name, flinkCounter);
+        counters.put(name, counter);
+        return counter;
     }
 
     @Override
@@ -116,24 +100,11 @@ public class FlinkMetricContext implements MetricsContext {
             return existingMeter;
         }
 
-        if (metricGroup == null) {
-            Meter noOpMeter = new NoOpMeter();
-            meters.put(name, noOpMeter);
-            return noOpMeter;
-        }
-
-        try {
-            org.apache.flink.metrics.Meter flinkMeter =
-                    metricGroup.meter(name, new org.apache.flink.metrics.MeterView(60));
-            Meter meter = new FlinkMeter(name, flinkMeter);
-            meters.put(name, meter);
-            return meter;
-        } catch (Exception e) {
-            log.warn("Failed to create meter: {}, returning no-op meter", name);
-            Meter noOpMeter = new NoOpMeter();
-            meters.put(name, noOpMeter);
-            return noOpMeter;
-        }
+        org.apache.flink.metrics.Meter flinkMeter =
+                metricGroup.meter(name, new org.apache.flink.metrics.MeterView(60));
+        Meter meter = new FlinkMeter(name, flinkMeter);
+        meters.put(name, meter);
+        return meter;
     }
 
     @Override
