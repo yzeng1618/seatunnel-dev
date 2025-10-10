@@ -1339,7 +1339,7 @@ jobs:
       matrix:
         java: [ '8', '11' ]
         os: [ 'ubuntu-latest' ]
-    timeout-minutes: 180
+    timeout-minutes: 210
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2

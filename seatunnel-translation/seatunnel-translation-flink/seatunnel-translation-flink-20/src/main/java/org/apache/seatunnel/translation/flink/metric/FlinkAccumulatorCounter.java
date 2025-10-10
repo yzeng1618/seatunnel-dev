@@ -108,7 +108,8 @@ public class FlinkAccumulatorCounter implements Counter {
             if (flinkCounter != null) {
                 flinkCounter.inc(diff);
             }
-            accumulator.add(diff);
+            accumulator.resetLocal();
+            accumulator.add(n);
         } catch (Exception e) {
             log.warn("Error setting counter {}: {}", name, e.getMessage());
             accumulator.resetLocal();
