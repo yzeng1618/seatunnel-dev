@@ -24,15 +24,25 @@ import org.apache.seatunnel.api.common.metrics.Unit;
 import org.apache.flink.api.common.accumulators.LongCounter;
 import org.apache.flink.api.common.functions.RuntimeContext;
 
-import lombok.extern.slf4j.Slf4j;
+import java.util.HashMap;
+import java.util.Map;
 
-@Slf4j
 public class FlinkAccumulatorCounter implements Counter {
+
+    private static final Map<String, String> METRIC_NAME_MAPPINGS = new HashMap<>();
+
+    static {
+        // Initialize standard metric name mappings
+        METRIC_NAME_MAPPINGS.put("SinkWriteCount", MetricNames.SINK_WRITE_COUNT);
+        METRIC_NAME_MAPPINGS.put("SinkWriteBytes", MetricNames.SINK_WRITE_BYTES);
+        METRIC_NAME_MAPPINGS.put("SourceReceivedCount", MetricNames.SOURCE_RECEIVED_COUNT);
+        METRIC_NAME_MAPPINGS.put("SourceReceivedBytes", MetricNames.SOURCE_RECEIVED_BYTES);
+    }
+
     private final String name;
     private final org.apache.flink.metrics.Counter flinkCounter;
     private final LongCounter accumulator;
     private final RuntimeContext runtimeContext;
-    private volatile long localCount = 0L;
 
     public FlinkAccumulatorCounter(
             String name,
@@ -43,12 +53,8 @@ public class FlinkAccumulatorCounter implements Counter {
         this.runtimeContext = runtimeContext;
         this.accumulator = new LongCounter();
 
-        try {
-            String accumulatorName = getStandardAccumulatorName(name);
-            runtimeContext.addAccumulator(accumulatorName, accumulator);
-        } catch (Exception e) {
-            log.warn("Failed to register accumulator: {}", name);
-        }
+        String accumulatorName = getStandardAccumulatorName(name);
+        runtimeContext.addAccumulator(accumulatorName, accumulator);
     }
 
     @Override
@@ -58,19 +64,10 @@ public class FlinkAccumulatorCounter implements Counter {
 
     @Override
     public void inc(long n) {
-        try {
-            if (flinkCounter != null) {
-                flinkCounter.inc(n);
-            }
-
-            accumulator.add(n);
-
-            localCount += n;
-
-        } catch (Exception e) {
-            log.warn("Error incrementing counter {}", name);
-            localCount += n;
+        if (flinkCounter != null) {
+            flinkCounter.inc(n);
         }
+        accumulator.add(n);
     }
 
     @Override
@@ -80,52 +77,25 @@ public class FlinkAccumulatorCounter implements Counter {
 
     @Override
     public void dec(long n) {
-        try {
-            if (flinkCounter != null) {
-                flinkCounter.inc(-n);
-            }
-
-            accumulator.add(-n);
-
-            localCount -= n;
-
-        } catch (Exception e) {
-            log.warn("Error decrementing counter {}", name);
-            localCount -= n;
+        if (flinkCounter != null) {
+            flinkCounter.inc(-n);
         }
+        accumulator.add(-n);
     }
 
     @Override
     public void set(long n) {
-        try {
-            long diff = n - localCount;
-
-            if (flinkCounter != null) {
-                flinkCounter.inc(diff);
-            }
-
-            accumulator.add(diff);
-            localCount = n;
-
-            // Counter set successfully
-        } catch (Exception e) {
-            log.warn("Error setting counter {}", name);
-            localCount = n;
+        long current = accumulator.getLocalValue();
+        long diff = n - current;
+        if (flinkCounter != null) {
+            flinkCounter.inc(diff);
         }
+        accumulator.add(diff);
     }
 
     @Override
     public long getCount() {
-        try {
-            long accumulatorValue = accumulator.getLocalValue();
-            if (accumulatorValue != localCount) {
-                localCount = accumulatorValue;
-            }
-            return accumulatorValue;
-        } catch (Exception e) {
-            log.warn("Failed to get accumulator value, using local count: {}", localCount);
-            return localCount;
-        }
+        return accumulator.getLocalValue();
     }
 
     @Override
@@ -142,31 +112,17 @@ public class FlinkAccumulatorCounter implements Counter {
         return accumulator;
     }
 
-    public void sync() {
-        try {
-            long accumulatorValue = accumulator.getLocalValue();
-            if (accumulatorValue != localCount) {
-                localCount = accumulatorValue;
-            }
-        } catch (Exception e) {
-            log.warn("Failed to sync counter [{}]", name);
-        }
-    }
-
     private String getStandardAccumulatorName(String originalName) {
-        if (originalName.contains("SinkWriteCount")
-                || originalName.equals(MetricNames.SINK_WRITE_COUNT)) {
-            return MetricNames.SINK_WRITE_COUNT;
-        } else if (originalName.contains("SinkWriteBytes")
-                || originalName.equals(MetricNames.SINK_WRITE_BYTES)) {
-            return MetricNames.SINK_WRITE_BYTES;
-        } else if (originalName.contains("SourceReceivedCount")
-                || originalName.equals(MetricNames.SOURCE_RECEIVED_COUNT)) {
-            return MetricNames.SOURCE_RECEIVED_COUNT;
-        } else if (originalName.contains("SourceReceivedBytes")
-                || originalName.equals(MetricNames.SOURCE_RECEIVED_BYTES)) {
-            return MetricNames.SOURCE_RECEIVED_BYTES;
+        if (METRIC_NAME_MAPPINGS.containsValue(originalName)) {
+            return originalName;
         }
+
+        for (Map.Entry<String, String> entry : METRIC_NAME_MAPPINGS.entrySet()) {
+            if (originalName.contains(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+
         return originalName;
     }
 }
