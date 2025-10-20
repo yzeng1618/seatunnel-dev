@@ -101,20 +101,16 @@ public class FlinkJobMetricsSummary {
                 if (value instanceof Number) {
                     long longValue = ((Number) value).longValue();
 
-                    if (key.equals(MetricNames.SINK_WRITE_COUNT)
-                            || key.contains("SinkWriteCount")) {
+                    if (key.contains("SinkWriteCount")) {
                         metrics.put(MetricNames.SINK_WRITE_COUNT, longValue);
 
-                    } else if (key.equals(MetricNames.SINK_WRITE_BYTES)
-                            || key.contains("SinkWriteBytes")) {
+                    } else if (key.contains("SinkWriteBytes")) {
                         metrics.put(MetricNames.SINK_WRITE_BYTES, longValue);
 
-                    } else if (key.equals(MetricNames.SOURCE_RECEIVED_COUNT)
-                            || key.contains("SourceReceivedCount")) {
+                    } else if (key.contains("SourceReceivedCount")) {
                         metrics.put(MetricNames.SOURCE_RECEIVED_COUNT, longValue);
 
-                    } else if (key.equals(MetricNames.SOURCE_RECEIVED_BYTES)
-                            || key.contains("SourceReceivedBytes")) {
+                    } else if (key.contains("SourceReceivedBytes")) {
                         metrics.put(MetricNames.SOURCE_RECEIVED_BYTES, longValue);
                     }
                 }
