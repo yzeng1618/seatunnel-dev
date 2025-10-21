@@ -62,11 +62,13 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
 
             if (runtimeContext != null && metricGroup != null) {
                 return new FlinkMetricContext(runtimeContext, metricGroup);
-            } else {
+            } else if (metricGroup != null) {
                 return new FlinkMetricContext(metricGroup);
+            } else {
+                throw new IllegalStateException("Neither RuntimeContext nor MetricGroup available");
             }
         } catch (Exception e) {
-            return new FlinkMetricContext((MetricGroup) null);
+            throw new IllegalStateException("Failed to initialize MetricsContext", e);
         }
     }
 
