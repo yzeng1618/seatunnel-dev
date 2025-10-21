@@ -41,12 +41,18 @@ public class FlinkMetricContext implements MetricsContext {
     private final Map<String, Meter> meters = new ConcurrentHashMap<>();
 
     public FlinkMetricContext(StreamingRuntimeContext runtimeContext) {
+        if (runtimeContext == null) {
+            throw new IllegalArgumentException("RuntimeContext cannot be null");
+        }
         this.runtimeContext = runtimeContext;
         this.generalRuntimeContext = runtimeContext;
-        this.metricGroup = runtimeContext != null ? runtimeContext.getMetricGroup() : null;
+        this.metricGroup = runtimeContext.getMetricGroup();
     }
 
     public FlinkMetricContext(RuntimeContext runtimeContext, MetricGroup metricGroup) {
+        if (runtimeContext == null || metricGroup == null) {
+            throw new IllegalArgumentException("RuntimeContext and MetricGroup cannot be null");
+        }
         this.runtimeContext =
                 runtimeContext instanceof StreamingRuntimeContext
                         ? (StreamingRuntimeContext) runtimeContext
@@ -56,6 +62,9 @@ public class FlinkMetricContext implements MetricsContext {
     }
 
     public FlinkMetricContext(MetricGroup metricGroup) {
+        if (metricGroup == null) {
+            throw new IllegalArgumentException("MetricGroup cannot be null");
+        }
         this.metricGroup = metricGroup;
         this.generalRuntimeContext = null;
         this.runtimeContext = null;
