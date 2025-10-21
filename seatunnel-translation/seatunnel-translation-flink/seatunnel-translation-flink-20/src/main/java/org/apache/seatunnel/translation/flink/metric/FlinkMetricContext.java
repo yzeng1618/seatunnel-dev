@@ -41,18 +41,12 @@ public class FlinkMetricContext implements MetricsContext {
     private final Map<String, Meter> meters = new ConcurrentHashMap<>();
 
     public FlinkMetricContext(StreamingRuntimeContext runtimeContext) {
-        if (runtimeContext == null) {
-            throw new IllegalArgumentException("RuntimeContext cannot be null");
-        }
         this.runtimeContext = runtimeContext;
         this.generalRuntimeContext = runtimeContext;
-        this.metricGroup = runtimeContext.getMetricGroup();
+        this.metricGroup = runtimeContext != null ? runtimeContext.getMetricGroup() : null;
     }
 
     public FlinkMetricContext(RuntimeContext runtimeContext, MetricGroup metricGroup) {
-        if (runtimeContext == null || metricGroup == null) {
-            throw new IllegalArgumentException("RuntimeContext and MetricGroup cannot be null");
-        }
         this.runtimeContext =
                 runtimeContext instanceof StreamingRuntimeContext
                         ? (StreamingRuntimeContext) runtimeContext
@@ -62,9 +56,6 @@ public class FlinkMetricContext implements MetricsContext {
     }
 
     public FlinkMetricContext(MetricGroup metricGroup) {
-        if (metricGroup == null) {
-            throw new IllegalArgumentException("MetricGroup cannot be null");
-        }
         this.metricGroup = metricGroup;
         this.generalRuntimeContext = null;
         this.runtimeContext = null;
@@ -77,24 +68,40 @@ public class FlinkMetricContext implements MetricsContext {
             return existingCounter;
         }
 
-        org.apache.flink.metrics.Counter flinkCounter = metricGroup.counter(name);
-
-        if (isKeyMetric(name) && generalRuntimeContext != null) {
-            try {
-                Counter counter =
-                        new FlinkAccumulatorCounter(name, flinkCounter, generalRuntimeContext);
-                counters.put(name, counter);
-                return counter;
-            } catch (Exception e) {
-                log.warn(
-                        "Failed to create accumulator for: {}, falling back to simple counter",
-                        name);
-            }
+        if (metricGroup == null) {
+            Counter noOpCounter = new NoOpCounter(name);
+            counters.put(name, noOpCounter);
+            return noOpCounter;
         }
 
-        Counter counter = new FlinkCounter(name, flinkCounter);
-        counters.put(name, counter);
-        return counter;
+        try {
+            org.apache.flink.metrics.Counter flinkCounter = metricGroup.counter(name);
+
+            if (isKeyMetric(name) && generalRuntimeContext != null) {
+                try {
+                    String counterName = name;
+                    org.apache.flink.metrics.Counter fCounter = flinkCounter;
+                    RuntimeContext rContext = generalRuntimeContext;
+
+                    Counter counter = new FlinkAccumulatorCounter(counterName, fCounter, rContext);
+                    counters.put(name, counter);
+                    return counter;
+                } catch (Exception e) {
+                    log.warn(
+                            "Failed to create accumulator for: {}, falling back to simple counter",
+                            name);
+                }
+            }
+
+            Counter counter = new FlinkCounter(name, flinkCounter);
+            counters.put(name, counter);
+            return counter;
+        } catch (Exception e) {
+            log.warn("Failed to create counter: {}, returning no-op counter", name);
+            Counter noOpCounter = new NoOpCounter(name);
+            counters.put(name, noOpCounter);
+            return noOpCounter;
+        }
     }
 
     @Override
@@ -109,11 +116,24 @@ public class FlinkMetricContext implements MetricsContext {
             return existingMeter;
         }
 
-        org.apache.flink.metrics.Meter flinkMeter =
-                metricGroup.meter(name, new org.apache.flink.metrics.MeterView(60));
-        Meter meter = new FlinkMeter(name, flinkMeter);
-        meters.put(name, meter);
-        return meter;
+        if (metricGroup == null) {
+            Meter noOpMeter = new NoOpMeter(name);
+            meters.put(name, noOpMeter);
+            return noOpMeter;
+        }
+
+        try {
+            org.apache.flink.metrics.Meter flinkMeter =
+                    metricGroup.meter(name, new org.apache.flink.metrics.MeterView(60));
+            Meter meter = new FlinkMeter(name, flinkMeter);
+            meters.put(name, meter);
+            return meter;
+        } catch (Exception e) {
+            log.warn("Failed to create meter: {}, returning no-op meter", name);
+            Meter noOpMeter = new NoOpMeter(name);
+            meters.put(name, noOpMeter);
+            return noOpMeter;
+        }
     }
 
     @Override

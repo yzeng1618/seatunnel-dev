@@ -60,19 +60,13 @@ public class FlinkSinkWriterContext implements SinkWriter.Context {
             RuntimeContext runtimeContext = getRuntimeContext();
             MetricGroup metricGroup = initContext.metricGroup();
 
-            if (metricGroup == null) {
-                throw new IllegalStateException(
-                        "MetricGroup is null, cannot create FlinkMetricContext");
-            }
-
-            if (runtimeContext != null) {
+            if (runtimeContext != null && metricGroup != null) {
                 return new FlinkMetricContext(runtimeContext, metricGroup);
             } else {
                 return new FlinkMetricContext(metricGroup);
             }
         } catch (Exception e) {
-            log.error("Failed to create FlinkMetricContext", e);
-            throw new RuntimeException("Failed to create FlinkMetricContext", e);
+            return new FlinkMetricContext((MetricGroup) null);
         }
     }
 
