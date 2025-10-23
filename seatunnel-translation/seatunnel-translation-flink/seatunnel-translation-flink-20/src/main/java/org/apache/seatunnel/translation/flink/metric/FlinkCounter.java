@@ -40,17 +40,17 @@ public class FlinkCounter implements Counter {
 
     @Override
     public void dec() {
-        // Not supported by Flink counter
+        throw new UnsupportedOperationException("Flink Counter does not support decrement");
     }
 
     @Override
     public void dec(long n) {
-        // Not supported by Flink counter
+        throw new UnsupportedOperationException("Flink Counter does not support decrement");
     }
 
     @Override
     public void set(long n) {
-        // Not supported by Flink counter
+        throw new UnsupportedOperationException("Flink Counter does not support set");
     }
 
     @Override

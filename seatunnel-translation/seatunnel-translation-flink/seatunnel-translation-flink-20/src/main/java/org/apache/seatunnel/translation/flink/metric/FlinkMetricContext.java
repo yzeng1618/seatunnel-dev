@@ -125,7 +125,7 @@ public class FlinkMetricContext implements MetricsContext {
         try {
             org.apache.flink.metrics.Meter flinkMeter =
                     metricGroup.meter(name, new org.apache.flink.metrics.MeterView(60));
-            Meter meter = new FlinkMeter(flinkMeter);
+            Meter meter = new FlinkMeter(name, flinkMeter);
             meters.put(name, meter);
             return meter;
         } catch (Exception e) {
