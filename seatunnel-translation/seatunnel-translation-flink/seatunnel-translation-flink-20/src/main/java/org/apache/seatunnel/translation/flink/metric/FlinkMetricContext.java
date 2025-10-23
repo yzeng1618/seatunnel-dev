@@ -93,7 +93,7 @@ public class FlinkMetricContext implements MetricsContext {
                 }
             }
 
-            Counter counter = new FlinkCounter(flinkCounter);
+            Counter counter = new FlinkCounter(name, flinkCounter);
             counters.put(name, counter);
             return counter;
         } catch (Exception e) {

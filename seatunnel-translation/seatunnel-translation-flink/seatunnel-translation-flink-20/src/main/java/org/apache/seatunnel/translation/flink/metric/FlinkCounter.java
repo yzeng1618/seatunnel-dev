@@ -22,9 +22,11 @@ import org.apache.seatunnel.api.common.metrics.Unit;
 
 /** Flink implementation of SeaTunnel Counter metric. */
 public class FlinkCounter implements Counter {
+    private final String name;
     private final org.apache.flink.metrics.Counter flinkCounter;
 
-    public FlinkCounter(org.apache.flink.metrics.Counter flinkCounter) {
+    public FlinkCounter(String name, org.apache.flink.metrics.Counter flinkCounter) {
+        this.name = name;
         this.flinkCounter = flinkCounter;
     }
 
@@ -40,17 +42,17 @@ public class FlinkCounter implements Counter {
 
     @Override
     public void dec() {
-        throw new UnsupportedOperationException("Flink Counter does not support decrement");
+        // Not supported by Flink counter
     }
 
     @Override
     public void dec(long n) {
-        throw new UnsupportedOperationException("Flink Counter does not support decrement");
+        // Not supported by Flink counter
     }
 
     @Override
     public void set(long n) {
-        throw new UnsupportedOperationException("Flink Counter does not support set");
+        // Not supported by Flink counter
     }
 
     @Override
@@ -60,7 +62,7 @@ public class FlinkCounter implements Counter {
 
     @Override
     public String name() {
-        return "";
+        return name;
     }
 
     @Override
