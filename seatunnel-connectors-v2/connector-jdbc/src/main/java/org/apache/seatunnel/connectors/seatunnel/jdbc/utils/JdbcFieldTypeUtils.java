@@ -162,12 +162,47 @@ public final class JdbcFieldTypeUtils {
         // Handle Oracle-specific TIMESTAMPTZ objects
         if (obj.getClass().getName().equals("oracle.sql.TIMESTAMPTZ")) {
             try {
-                // Use reflection to call timestampValue() method
-                java.lang.reflect.Method timestampValueMethod =
-                        obj.getClass().getMethod("timestampValue");
-                Timestamp ts = (Timestamp) timestampValueMethod.invoke(obj);
-                if (ts != null) {
-                    return ts.toInstant().atOffset(ZoneOffset.UTC);
+                // First try stringValue(Connection) to preserve original offset
+                java.sql.Connection conn = null;
+                try {
+                    if (resultSet.getStatement() != null) {
+                        conn = resultSet.getStatement().getConnection();
+                    }
+                } catch (Throwable ignored) {
+                }
+
+                try {
+                    java.lang.reflect.Method stringValueMethod =
+                            obj.getClass().getMethod("stringValue", java.sql.Connection.class);
+                    String str = (String) stringValueMethod.invoke(obj, conn);
+                    OffsetDateTime odt = parseOffsetDateTimeFromString(str);
+                    if (odt != null) {
+                        return odt;
+                    }
+                } catch (NoSuchMethodException ignore) {
+                    // ignore and try timestampValue
+                }
+
+                // Fallback: timestampValue(Connection) -> Timestamp (loses offset)
+                try {
+                    java.lang.reflect.Method timestampValueMethod =
+                            obj.getClass().getMethod("timestampValue", java.sql.Connection.class);
+                    Timestamp ts = (Timestamp) timestampValueMethod.invoke(obj, conn);
+                    if (ts != null) {
+                        return ts.toInstant().atOffset(ZoneOffset.UTC);
+                    }
+                } catch (NoSuchMethodException ignore) {
+                    // As a last try, call no-arg timestampValue if present
+                    try {
+                        java.lang.reflect.Method timestampValueMethod =
+                                obj.getClass().getMethod("timestampValue");
+                        Timestamp ts = (Timestamp) timestampValueMethod.invoke(obj);
+                        if (ts != null) {
+                            return ts.toInstant().atOffset(ZoneOffset.UTC);
+                        }
+                    } catch (Exception ignore2) {
+                        // ignore
+                    }
                 }
             } catch (Exception e) {
                 // Fall through to string parsing

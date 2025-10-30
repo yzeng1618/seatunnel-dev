@@ -141,12 +141,31 @@ public class OracleJdbcRowConverter extends AbstractJdbcRowConverter {
         // Handle Oracle-specific TIMESTAMPTZ objects
         if (obj.getClass().getName().equals("oracle.sql.TIMESTAMPTZ")) {
             try {
-                // Use reflection to call timestampValue() method to get Timestamp
-                java.lang.reflect.Method timestampValueMethod =
-                        obj.getClass().getMethod("timestampValue");
-                Timestamp ts = (Timestamp) timestampValueMethod.invoke(obj);
-                if (ts != null) {
-                    return ts.toInstant().atOffset(ZoneOffset.UTC);
+                // Prefer to keep the original offset: try stringValue(Connection)
+                java.sql.Connection conn = null;
+                try {
+                    if (rs.getStatement() != null) {
+                        conn = rs.getStatement().getConnection();
+                    }
+                } catch (Throwable ignored) {
+                }
+
+                try {
+                    java.lang.reflect.Method stringValueMethod =
+                            obj.getClass().getMethod("stringValue", java.sql.Connection.class);
+                    String str = (String) stringValueMethod.invoke(obj, conn);
+                    OffsetDateTime parsed = parseOracleTimestampTz(str);
+                    if (parsed != null) {
+                        return parsed;
+                    }
+                } catch (NoSuchMethodException nsme) {
+                    // Fall back to timestampValue if stringValue not present
+                    java.lang.reflect.Method timestampValueMethod =
+                            obj.getClass().getMethod("timestampValue", java.sql.Connection.class);
+                    Timestamp ts = (Timestamp) timestampValueMethod.invoke(obj, conn);
+                    if (ts != null) {
+                        return ts.toInstant().atOffset(ZoneOffset.UTC);
+                    }
                 }
             } catch (Exception e) {
                 log.debug(
@@ -157,7 +176,7 @@ public class OracleJdbcRowConverter extends AbstractJdbcRowConverter {
                 // Try to get string representation and parse it
                 String str = obj.toString();
                 if (str != null && !str.isEmpty()) {
-                    return JdbcFieldTypeUtils.getOffsetDateTime(rs, columnIndex);
+                    return parseOracleTimestampTz(str);
                 }
             } catch (Exception e) {
                 log.debug("Failed to parse Oracle TIMESTAMPTZ from string representation", e);
@@ -166,5 +185,49 @@ public class OracleJdbcRowConverter extends AbstractJdbcRowConverter {
 
         // Fall back to the enhanced JdbcFieldTypeUtils method
         return JdbcFieldTypeUtils.getOffsetDateTime(rs, columnIndex);
+    }
+
+    private OffsetDateTime parseOracleTimestampTz(String str) {
+        if (str == null) {
+            return null;
+        }
+        String s = str.trim();
+        if (s.isEmpty()) {
+            return null;
+        }
+
+        try {
+            // Normalize common Oracle outputs
+            // Examples:
+            //  - 2023-12-25 10:30:45.123456 +08:00
+            //  - 2023-12-25 10:30:45 +08
+            //  - 2023-12-25 10:30:45.123456 UTC
+            String iso = s.replace(' ', 'T');
+
+            // Handle trailing UTC keyword
+            if (iso.endsWith("UTC")) {
+                iso = iso.substring(0, iso.length() - 3);
+                iso = iso.endsWith("T") ? iso + "Z" : iso + "Z";
+            }
+
+            // Add missing colon to offsets like +HH or +HHMM
+            if (iso.matches(".*[+-]\\d{2}$")) {
+                iso = iso + ":00";
+            } else if (iso.matches(".*[+-]\\d{4}$")) {
+                iso = iso.substring(0, iso.length() - 2) + ":" + iso.substring(iso.length() - 2);
+            }
+
+            return OffsetDateTime.parse(iso);
+        } catch (Exception e) {
+            log.debug("Failed to parse Oracle TIMESTAMPTZ string: {}", str, e);
+            try {
+                // Last resort: drop offset and treat as UTC
+                String withoutOffset = s.replaceFirst("([+-]\\d{2}:?\\d{2}|\\s*UTC|Z)$", "").trim();
+                Timestamp ts = Timestamp.valueOf(withoutOffset.replace('T', ' '));
+                return ts.toInstant().atOffset(ZoneOffset.UTC);
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
     }
 }
