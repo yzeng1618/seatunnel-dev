@@ -210,16 +210,6 @@ public class OracleJdbcRowConverter extends AbstractJdbcRowConverter {
                 log.debug(
                         "Failed to extract timestamp from Oracle TIMESTAMPTZ using reflection", e);
             }
-
-            try {
-                // Try to get string representation and parse it
-                String str = obj.toString();
-                if (str != null && !str.isEmpty()) {
-                    return JdbcFieldTypeUtils.getOffsetDateTime(rs, columnIndex);
-                }
-            } catch (Exception e) {
-                log.debug("Failed to parse Oracle TIMESTAMPTZ from string representation", e);
-            }
         }
 
         // Fall back to the enhanced JdbcFieldTypeUtils method
