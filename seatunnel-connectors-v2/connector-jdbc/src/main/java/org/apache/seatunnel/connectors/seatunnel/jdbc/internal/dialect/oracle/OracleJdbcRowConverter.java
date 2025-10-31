@@ -37,6 +37,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Optional;
 
 import static org.apache.seatunnel.connectors.seatunnel.jdbc.internal.dialect.oracle.OracleTypeConverter.ORACLE_BLOB;
 
@@ -103,25 +104,82 @@ public class OracleJdbcRowConverter extends AbstractJdbcRowConverter {
 
     @Override
     public SeaTunnelRow toInternal(ResultSet rs, TableSchema tableSchema) throws SQLException {
+        // Override to handle Oracle-specific TIMESTAMP_TZ processing
+        // We cannot call super.toInternal() and then re-read TIMESTAMP_TZ fields
+        // because ResultSet can only be read once per row
+        // So we need to handle all fields here, delegating to parent for non-TIMESTAMP_TZ types
+
         SeaTunnelRowType typeInfo = tableSchema.toPhysicalRowDataType();
         Object[] fields = new Object[typeInfo.getTotalFields()];
+
         for (int fieldIndex = 0; fieldIndex < typeInfo.getTotalFields(); fieldIndex++) {
             SeaTunnelDataType<?> seaTunnelDataType = typeInfo.getFieldType(fieldIndex);
             int resultSetIndex = fieldIndex + 1;
 
-            switch (seaTunnelDataType.getSqlType()) {
-                case TIMESTAMP_TZ:
-                    // Handle Oracle-specific TIMESTAMP_TZ processing
-                    fields[fieldIndex] = getOracleOffsetDateTime(rs, resultSetIndex);
-                    break;
-                default:
-                    // Use parent class implementation for other types
-                    SeaTunnelRow parentRow = super.toInternal(rs, tableSchema);
-                    fields[fieldIndex] = parentRow.getField(fieldIndex);
-                    break;
+            // Only override TIMESTAMP_TZ handling, use JdbcFieldTypeUtils for all other types
+            if (seaTunnelDataType.getSqlType() == SqlType.TIMESTAMP_TZ) {
+                // Handle Oracle-specific TIMESTAMP_TZ processing
+                fields[fieldIndex] = getOracleOffsetDateTime(rs, resultSetIndex);
+            } else {
+                // For all other types, use the same logic as parent class
+                // which delegates to JdbcFieldTypeUtils
+                fields[fieldIndex] =
+                        readFieldByType(
+                                rs,
+                                resultSetIndex,
+                                seaTunnelDataType,
+                                typeInfo.getFieldName(fieldIndex));
             }
         }
         return new SeaTunnelRow(fields);
+    }
+
+    /**
+     * Read a field from ResultSet using the same logic as parent class. This is needed because we
+     * can't call super.toInternal() multiple times.
+     */
+    private Object readFieldByType(
+            ResultSet rs,
+            int resultSetIndex,
+            SeaTunnelDataType<?> seaTunnelDataType,
+            String fieldName)
+            throws SQLException {
+        switch (seaTunnelDataType.getSqlType()) {
+            case STRING:
+                return JdbcFieldTypeUtils.getString(rs, resultSetIndex);
+            case BOOLEAN:
+                return JdbcFieldTypeUtils.getBoolean(rs, resultSetIndex);
+            case TINYINT:
+                return JdbcFieldTypeUtils.getByte(rs, resultSetIndex);
+            case SMALLINT:
+                return JdbcFieldTypeUtils.getShort(rs, resultSetIndex);
+            case INT:
+                return JdbcFieldTypeUtils.getInt(rs, resultSetIndex);
+            case BIGINT:
+                return JdbcFieldTypeUtils.getLong(rs, resultSetIndex);
+            case FLOAT:
+                return JdbcFieldTypeUtils.getFloat(rs, resultSetIndex);
+            case DOUBLE:
+                return JdbcFieldTypeUtils.getDouble(rs, resultSetIndex);
+            case DECIMAL:
+                return JdbcFieldTypeUtils.getBigDecimal(rs, resultSetIndex);
+            case DATE:
+                return JdbcFieldTypeUtils.getDate(rs, resultSetIndex);
+            case TIME:
+                return JdbcFieldTypeUtils.getTime(rs, resultSetIndex);
+            case TIMESTAMP:
+                Timestamp sqlTimestamp = JdbcFieldTypeUtils.getTimestamp(rs, resultSetIndex);
+                return Optional.ofNullable(sqlTimestamp).map(e -> e.toLocalDateTime()).orElse(null);
+            case BYTES:
+                return JdbcFieldTypeUtils.getBytes(rs, resultSetIndex);
+            case NULL:
+                return null;
+            case ARRAY:
+                return convertToArray(rs, resultSetIndex, seaTunnelDataType, fieldName);
+            default:
+                // For any other types, try to get as object
+                return rs.getObject(resultSetIndex);
+        }
     }
 
     private OffsetDateTime getOracleOffsetDateTime(ResultSet rs, int columnIndex)
@@ -141,31 +199,12 @@ public class OracleJdbcRowConverter extends AbstractJdbcRowConverter {
         // Handle Oracle-specific TIMESTAMPTZ objects
         if (obj.getClass().getName().equals("oracle.sql.TIMESTAMPTZ")) {
             try {
-                // Prefer to keep the original offset: try stringValue(Connection)
-                java.sql.Connection conn = null;
-                try {
-                    if (rs.getStatement() != null) {
-                        conn = rs.getStatement().getConnection();
-                    }
-                } catch (Throwable ignored) {
-                }
-
-                try {
-                    java.lang.reflect.Method stringValueMethod =
-                            obj.getClass().getMethod("stringValue", java.sql.Connection.class);
-                    String str = (String) stringValueMethod.invoke(obj, conn);
-                    OffsetDateTime parsed = parseOracleTimestampTz(str);
-                    if (parsed != null) {
-                        return parsed;
-                    }
-                } catch (NoSuchMethodException nsme) {
-                    // Fall back to timestampValue if stringValue not present
-                    java.lang.reflect.Method timestampValueMethod =
-                            obj.getClass().getMethod("timestampValue", java.sql.Connection.class);
-                    Timestamp ts = (Timestamp) timestampValueMethod.invoke(obj, conn);
-                    if (ts != null) {
-                        return ts.toInstant().atOffset(ZoneOffset.UTC);
-                    }
+                // Use reflection to call timestampValue() method to get Timestamp
+                java.lang.reflect.Method timestampValueMethod =
+                        obj.getClass().getMethod("timestampValue");
+                Timestamp ts = (Timestamp) timestampValueMethod.invoke(obj);
+                if (ts != null) {
+                    return ts.toInstant().atOffset(ZoneOffset.UTC);
                 }
             } catch (Exception e) {
                 log.debug(
@@ -176,7 +215,7 @@ public class OracleJdbcRowConverter extends AbstractJdbcRowConverter {
                 // Try to get string representation and parse it
                 String str = obj.toString();
                 if (str != null && !str.isEmpty()) {
-                    return parseOracleTimestampTz(str);
+                    return JdbcFieldTypeUtils.getOffsetDateTime(rs, columnIndex);
                 }
             } catch (Exception e) {
                 log.debug("Failed to parse Oracle TIMESTAMPTZ from string representation", e);
@@ -185,49 +224,5 @@ public class OracleJdbcRowConverter extends AbstractJdbcRowConverter {
 
         // Fall back to the enhanced JdbcFieldTypeUtils method
         return JdbcFieldTypeUtils.getOffsetDateTime(rs, columnIndex);
-    }
-
-    private OffsetDateTime parseOracleTimestampTz(String str) {
-        if (str == null) {
-            return null;
-        }
-        String s = str.trim();
-        if (s.isEmpty()) {
-            return null;
-        }
-
-        try {
-            // Normalize common Oracle outputs
-            // Examples:
-            //  - 2023-12-25 10:30:45.123456 +08:00
-            //  - 2023-12-25 10:30:45 +08
-            //  - 2023-12-25 10:30:45.123456 UTC
-            String iso = s.replace(' ', 'T');
-
-            // Handle trailing UTC keyword
-            if (iso.endsWith("UTC")) {
-                iso = iso.substring(0, iso.length() - 3);
-                iso = iso.endsWith("T") ? iso + "Z" : iso + "Z";
-            }
-
-            // Add missing colon to offsets like +HH or +HHMM
-            if (iso.matches(".*[+-]\\d{2}$")) {
-                iso = iso + ":00";
-            } else if (iso.matches(".*[+-]\\d{4}$")) {
-                iso = iso.substring(0, iso.length() - 2) + ":" + iso.substring(iso.length() - 2);
-            }
-
-            return OffsetDateTime.parse(iso);
-        } catch (Exception e) {
-            log.debug("Failed to parse Oracle TIMESTAMPTZ string: {}", str, e);
-            try {
-                // Last resort: drop offset and treat as UTC
-                String withoutOffset = s.replaceFirst("([+-]\\d{2}:?\\d{2}|\\s*UTC|Z)$", "").trim();
-                Timestamp ts = Timestamp.valueOf(withoutOffset.replace('T', ' '));
-                return ts.toInstant().atOffset(ZoneOffset.UTC);
-            } catch (Exception ignored) {
-                return null;
-            }
-        }
     }
 }
