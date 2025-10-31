@@ -208,7 +208,7 @@ public final class JdbcFieldTypeUtils {
         return null;
     }
 
-    private static OffsetDateTime parseOffsetDateTimeFromString(String str) {
+    public static OffsetDateTime parseOffsetDateTimeFromString(String str) {
         if (str == null || str.trim().isEmpty()) {
             return null;
         }

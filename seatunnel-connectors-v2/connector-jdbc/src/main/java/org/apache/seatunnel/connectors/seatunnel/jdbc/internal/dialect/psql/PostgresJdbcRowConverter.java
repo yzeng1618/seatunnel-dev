@@ -388,6 +388,37 @@ public class PostgresJdbcRowConverter extends AbstractJdbcRowConverter {
             return null;
         }
 
+        // Handle OffsetDateTime directly
+        if (obj instanceof OffsetDateTime) {
+            return (OffsetDateTime) obj;
+        }
+
+        // Handle ZonedDateTime by converting to OffsetDateTime
+        if (obj instanceof java.time.ZonedDateTime) {
+            return ((java.time.ZonedDateTime) obj).toOffsetDateTime();
+        }
+
+        // Handle Instant by converting to UTC OffsetDateTime
+        if (obj instanceof java.time.Instant) {
+            return ((java.time.Instant) obj).atOffset(ZoneOffset.UTC);
+        }
+
+        // Handle Timestamp by converting to UTC OffsetDateTime
+        if (obj instanceof Timestamp) {
+            Timestamp ts = (Timestamp) obj;
+            return ts.toInstant().atOffset(ZoneOffset.UTC);
+        }
+
+        // Handle java.util.Date by converting to UTC OffsetDateTime
+        if (obj instanceof java.util.Date) {
+            return ((java.util.Date) obj).toInstant().atOffset(ZoneOffset.UTC);
+        }
+
+        // Handle Long (epoch milliseconds) by converting to UTC OffsetDateTime
+        if (obj instanceof Long) {
+            return java.time.Instant.ofEpochMilli((Long) obj).atOffset(ZoneOffset.UTC);
+        }
+
         // Handle PostgreSQL-specific timestamp with timezone objects
         if (obj.getClass().getName().startsWith("org.postgresql.")) {
             try {
@@ -403,8 +434,19 @@ public class PostgresJdbcRowConverter extends AbstractJdbcRowConverter {
             }
         }
 
-        // Fall back to the enhanced JdbcFieldTypeUtils method
-        return JdbcFieldTypeUtils.getOffsetDateTime(rs, columnIndex);
+        // Try parsing from string value if it contains offset information
+        String str = null;
+        try {
+            str = obj.toString();
+            if (str != null && !str.isEmpty()) {
+                return parsePostgresTimestampTz(str);
+            }
+        } catch (Exception e) {
+            log.debug("Failed to parse TIMESTAMP_TZ from string representation", e);
+        }
+
+        // Unknown representation; return null
+        return null;
     }
 
     private OffsetDateTime parsePostgresTimestampTz(String str) {

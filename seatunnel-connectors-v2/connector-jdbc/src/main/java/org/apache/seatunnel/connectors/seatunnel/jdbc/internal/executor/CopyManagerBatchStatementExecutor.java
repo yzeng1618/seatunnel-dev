@@ -151,7 +151,11 @@ public class CopyManagerBatchStatementExecutor implements JdbcBatchStatementExec
                     if (offsetDateTime != null) {
                         // Convert OffsetDateTime to string format for COPY statement
                         // PostgreSQL COPY expects ISO-8601 format with timezone
-                        csvRecord.add(offsetDateTime.toString());
+                        // Format: YYYY-MM-DD HH:MM:SS.ffffff+HH:MM or YYYY-MM-DD HH:MM:SS+HH:MM
+                        String timestampTzStr = offsetDateTime.toString();
+                        // Replace 'T' with space for PostgreSQL format
+                        timestampTzStr = timestampTzStr.replace('T', ' ');
+                        csvRecord.add(timestampTzStr);
                     } else {
                         csvRecord.add(null);
                     }
