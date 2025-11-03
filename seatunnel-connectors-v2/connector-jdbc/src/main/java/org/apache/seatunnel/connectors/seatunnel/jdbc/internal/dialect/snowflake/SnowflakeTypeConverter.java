@@ -171,10 +171,14 @@ public class SnowflakeTypeConverter implements TypeConverter<BasicTypeDefine> {
                 break;
             case SNOWFLAKE_DATE_TIME:
             case SNOWFLAKE_TIMESTAMP:
-            case SNOWFLAKE_TIMESTAMP_LTZ:
             case SNOWFLAKE_TIMESTAMP_NTZ:
-            case SNOWFLAKE_TIMESTAMP_TZ:
                 builder.dataType(LocalTimeType.LOCAL_DATE_TIME_TYPE);
+                builder.scale(9);
+                break;
+            case SNOWFLAKE_TIMESTAMP_TZ:
+            case SNOWFLAKE_TIMESTAMP_LTZ:
+                // TIMESTAMP_TZ and TIMESTAMP_LTZ support timezone information
+                builder.dataType(LocalTimeType.OFFSET_DATE_TIME_TYPE);
                 builder.scale(9);
                 break;
             default:
@@ -332,6 +336,21 @@ public class SnowflakeTypeConverter implements TypeConverter<BasicTypeDefine> {
                 }
                 builder.columnType(SNOWFLAKE_TIMESTAMP);
                 builder.dataType(SNOWFLAKE_TIMESTAMP);
+                break;
+            case TIMESTAMP_TZ:
+                if (column.getScale() > 9) {
+                    log.warn(
+                            "The timestamp_tz column {} type timestamp_tz({}) is out of range, "
+                                    + "which exceeds the maximum scale of {}, "
+                                    + "it will be converted to timestamp_tz({})",
+                            column.getName(),
+                            column.getScale(),
+                            9,
+                            9);
+                }
+                builder.columnType(SNOWFLAKE_TIMESTAMP_TZ);
+                builder.dataType(SNOWFLAKE_TIMESTAMP_TZ);
+                builder.scale(Math.min(column.getScale(), 9));
                 break;
             default:
                 throw CommonError.convertToSeaTunnelTypeError(
