@@ -1042,7 +1042,7 @@ jobs:
 
   jdbc-connectors-it-part-4:
     needs: [ changes, sanity-check ]
-    if: 'false'
+    if: needs.changes.outputs.api == 'true' || needs.changes.outputs.engine == 'true'
     runs-on: ${{ matrix.os }}
     env:
       RUN_ALL_CONTAINER: ${{ needs.changes.outputs.api }}
