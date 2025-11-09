@@ -41,6 +41,7 @@ import io.debezium.time.MicroTimestamp;
 import io.debezium.time.NanoTime;
 import io.debezium.time.NanoTimestamp;
 import io.debezium.time.Timestamp;
+import io.debezium.time.ZonedTimestamp;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -163,6 +164,8 @@ public class SeaTunnelRowDebeziumDeserializationConverters implements Serializab
                 return convertToTime();
             case TIMESTAMP:
                 return convertToTimestamp(serverTimeZone);
+            case TIMESTAMP_TZ:
+                return convertToTimestampTz(serverTimeZone);
             case FLOAT:
                 return wrapNumericConverter(convertToFloat());
             case DOUBLE:
@@ -411,6 +414,30 @@ public class SeaTunnelRowDebeziumDeserializationConverters implements Serializab
                     }
                 }
                 return TemporalConversions.toLocalDateTime(dbzObj, serverTimeZone);
+            }
+        };
+    }
+
+    private static DebeziumDeserializationConverter convertToTimestampTz(ZoneId serverTimeZone) {
+        final DebeziumDeserializationConverter timestampConverter =
+                convertToTimestamp(serverTimeZone);
+        return new DebeziumDeserializationConverter() {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public Object convert(Object dbzObj, Schema schema) throws Exception {
+                if (dbzObj == null) {
+                    return null;
+                }
+                if (schema != null && ZonedTimestamp.SCHEMA_NAME.equals(schema.name())) {
+                    return TemporalConversions.toOffsetDateTime(dbzObj, serverTimeZone);
+                }
+                Object timestamp = timestampConverter.convert(dbzObj, schema);
+                if (timestamp == null) {
+                    return null;
+                }
+                LocalDateTime localDateTime = (LocalDateTime) timestamp;
+                return localDateTime.atZone(serverTimeZone).toOffsetDateTime();
             }
         };
     }

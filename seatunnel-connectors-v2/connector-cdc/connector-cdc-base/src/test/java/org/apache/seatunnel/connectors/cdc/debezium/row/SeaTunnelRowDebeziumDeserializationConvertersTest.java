@@ -19,6 +19,7 @@ package org.apache.seatunnel.connectors.cdc.debezium.row;
 
 import org.apache.seatunnel.api.table.type.ArrayType;
 import org.apache.seatunnel.api.table.type.BasicType;
+import org.apache.seatunnel.api.table.type.LocalTimeType;
 import org.apache.seatunnel.api.table.type.SeaTunnelDataType;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
@@ -34,6 +35,9 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import io.debezium.time.ZonedTimestamp;
+
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -126,5 +130,39 @@ public class SeaTunnelRowDebeziumDeserializationConvertersTest {
         Assertions.assertTrue(
                 Arrays.equals(
                         doubles, (Double[]) (converter.convert(Arrays.asList(doubles), null))));
+    }
+
+    @Test
+    void testTimestampTzConverter() throws Exception {
+        SeaTunnelRowDebeziumDeserializationConverters converters =
+                new SeaTunnelRowDebeziumDeserializationConverters(
+                        new SeaTunnelRowType(
+                                new String[] {"ts"},
+                                new SeaTunnelDataType[] {LocalTimeType.OFFSET_DATE_TIME_TYPE}),
+                        new MetadataConverter[] {},
+                        ZoneId.of("UTC"),
+                        DebeziumDeserializationConverterFactory.DEFAULT);
+        Schema schema =
+                SchemaBuilder.struct()
+                        .field("ts", ZonedTimestamp.builder().optional().build())
+                        .build();
+        Struct value = new Struct(schema);
+        String timestampStr = "2025-11-05T05:54:15.123456Z";
+        value.put("ts", timestampStr);
+        SourceRecord record =
+                new SourceRecord(
+                        new HashMap<>(),
+                        new HashMap<>(),
+                        "topicName",
+                        null,
+                        SchemaBuilder.int32().build(),
+                        1,
+                        schema,
+                        value,
+                        null,
+                        new ArrayList<>());
+
+        SeaTunnelRow row = converters.convert(record, value, schema);
+        Assertions.assertEquals(OffsetDateTime.parse(timestampStr), row.getField(0));
     }
 }

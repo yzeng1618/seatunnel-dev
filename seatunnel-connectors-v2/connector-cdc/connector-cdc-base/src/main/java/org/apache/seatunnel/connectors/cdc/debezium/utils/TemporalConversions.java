@@ -26,8 +26,10 @@ import java.time.OffsetDateTime;
 import java.time.OffsetTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoField;
 import java.util.concurrent.TimeUnit;
 
@@ -221,6 +223,48 @@ public final class TemporalConversions {
         }
         throw new IllegalArgumentException(
                 "Unable to convert to LocalDateTime from unexpected value '"
+                        + obj
+                        + "' of type "
+                        + obj.getClass().getName());
+    }
+
+    public static OffsetDateTime toOffsetDateTime(Object obj, ZoneId zoneId) {
+        if (obj == null) {
+            return null;
+        }
+        if (obj instanceof OffsetDateTime) {
+            return (OffsetDateTime) obj;
+        }
+        if (obj instanceof ZonedDateTime) {
+            return ((ZonedDateTime) obj).toOffsetDateTime();
+        }
+        if (obj instanceof LocalDateTime) {
+            return ((LocalDateTime) obj).atZone(zoneId).toOffsetDateTime();
+        }
+        if (obj instanceof Instant) {
+            return ((Instant) obj).atZone(zoneId).toOffsetDateTime();
+        }
+        if (obj instanceof java.util.Date) {
+            return ((java.util.Date) obj).toInstant().atZone(zoneId).toOffsetDateTime();
+        }
+        if (obj instanceof Long) {
+            return Instant.ofEpochMilli((Long) obj).atZone(zoneId).toOffsetDateTime();
+        }
+        if (obj instanceof Integer) {
+            long millis = ((Integer) obj).longValue();
+            return Instant.ofEpochMilli(millis).atZone(zoneId).toOffsetDateTime();
+        }
+        if (obj instanceof String) {
+            String text = (String) obj;
+            try {
+                return OffsetDateTime.parse(text);
+            } catch (DateTimeParseException ignore) {
+                LocalDateTime localDateTime = LocalDateTime.parse(text);
+                return localDateTime.atZone(zoneId).toOffsetDateTime();
+            }
+        }
+        throw new IllegalArgumentException(
+                "Unable to convert to OffsetDateTime from unexpected value '"
                         + obj
                         + "' of type "
                         + obj.getClass().getName());
