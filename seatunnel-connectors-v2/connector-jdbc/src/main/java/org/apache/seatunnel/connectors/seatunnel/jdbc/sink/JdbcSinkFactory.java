@@ -217,7 +217,8 @@ public class JdbcSinkFactory implements TableSinkFactory {
                         sinkConfig.getJdbcConnectionConfig().getUrl(),
                         sinkConfig.getJdbcConnectionConfig().getCompatibleMode(),
                         sinkConfig.getJdbcConnectionConfig().getDialect(),
-                        fieldIdeEnum == null ? null : fieldIdeEnum.getValue());
+                        fieldIdeEnum == null ? null : fieldIdeEnum.getValue(),
+                        sinkConfig.getJdbcConnectionConfig());
         dialect.connectionUrlParse(
                 sinkConfig.getJdbcConnectionConfig().getUrl(),
                 sinkConfig.getJdbcConnectionConfig().getProperties(),
@@ -259,6 +260,7 @@ public class JdbcSinkFactory implements TableSinkFactory {
                         JdbcSinkOptions.USE_COPY_STATEMENT,
                         JdbcSinkOptions.COMPATIBLE_MODE,
                         JdbcSinkOptions.ENABLE_UPSERT,
+                        JdbcSinkOptions.SERVER_TIME_ZONE,
                         JdbcSinkOptions.FIELD_IDE,
                         JdbcSinkOptions.TABLE_PREFIX,
                         JdbcSinkOptions.TABLE_SUFFIX,

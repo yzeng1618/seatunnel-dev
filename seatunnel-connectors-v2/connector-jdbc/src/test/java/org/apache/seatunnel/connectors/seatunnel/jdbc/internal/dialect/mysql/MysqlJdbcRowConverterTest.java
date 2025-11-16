@@ -50,6 +50,23 @@ public class MysqlJdbcRowConverterTest {
     }
 
     @Test
+    public void testReadTimestampTzWithExplicitZone() throws Exception {
+        TableSchema schema = buildSchemaWithTimestampTz();
+        ResultSet rs = mock(ResultSet.class);
+
+        Instant instant = Instant.parse("2020-01-01T08:01:02Z");
+        when(rs.getTimestamp(1)).thenReturn(Timestamp.from(instant));
+
+        ZoneId zoneId = ZoneId.of("Asia/Shanghai");
+        MysqlJdbcRowConverter converter = new MysqlJdbcRowConverter(zoneId);
+        SeaTunnelRow row = converter.toInternal(rs, schema);
+
+        OffsetDateTime actual = (OffsetDateTime) row.getField(0);
+        OffsetDateTime expected = instant.atZone(zoneId).toOffsetDateTime();
+        Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
     public void testReadTimestampTzNull() throws Exception {
         TableSchema schema = buildSchemaWithTimestampTz();
         ResultSet rs = mock(ResultSet.class);

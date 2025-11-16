@@ -34,11 +34,18 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.ZoneId;
 import java.util.Optional;
 
 public class MysqlJdbcRowConverter extends AbstractJdbcRowConverter {
-    private static final ZoneId SYSTEM_ZONE = ZoneId.systemDefault();
+    private final ZoneId serverTimeZone;
+
+    public MysqlJdbcRowConverter() {
+        this(null);
+    }
+
+    public MysqlJdbcRowConverter(ZoneId serverTimeZone) {
+        this.serverTimeZone = serverTimeZone == null ? ZoneId.systemDefault() : serverTimeZone;
+    }
 
     @Override
     public SeaTunnelRow toInternal(ResultSet rs, TableSchema tableSchema) throws SQLException {
@@ -98,7 +105,7 @@ public class MysqlJdbcRowConverter extends AbstractJdbcRowConverter {
                                     .map(
                                             e ->
                                                     e.toInstant()
-                                                            .atZone(SYSTEM_ZONE)
+                                                            .atZone(serverTimeZone)
                                                             .toOffsetDateTime())
                                     .orElse(null);
                     break;
