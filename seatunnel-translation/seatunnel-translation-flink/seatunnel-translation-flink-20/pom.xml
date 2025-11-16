@@ -50,28 +50,28 @@
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-java</artifactId>
             <version>${flink.1.20.1.version}</version>
-            <scope>provided</scope>
+            <scope>${flink.scope}</scope>
         </dependency>
 
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-runtime</artifactId>
             <version>${flink.1.20.1.version}</version>
-            <scope>provided</scope>
+            <scope>${flink.scope}</scope>
         </dependency>
 
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-streaming-java</artifactId>
             <version>${flink.1.20.1.version}</version>
-            <scope>provided</scope>
+            <scope>${flink.scope}</scope>
         </dependency>
 
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-table-runtime</artifactId>
             <version>${flink.1.20.1.version}</version>
-            <scope>provided</scope>
+            <scope>${flink.scope}</scope>
         </dependency>
     </dependencies>
 </project>
