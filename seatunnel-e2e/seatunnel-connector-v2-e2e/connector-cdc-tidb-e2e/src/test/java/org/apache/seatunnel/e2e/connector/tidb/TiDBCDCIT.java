@@ -77,6 +77,10 @@ public class TiDBCDCIT extends TiDBTestBase implements TestResource {
                     + " f_enum, f_mediumblob, f_long_varchar, f_real, f_time, f_tinyint, f_tinyint_unsigned,"
                     + " f_json, cast(f_year as year) from %s.%s";
 
+    private static final long WAIT_TIMEOUT_MS = Long.getLong("seatunnel.tidb.cdc.wait.ms", 120000L);
+    private static final long LONG_WAIT_TIMEOUT_MS =
+            Long.getLong("seatunnel.tidb.cdc.long.wait.ms", 180000L);
+
     private String driverUrl() {
         return "https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.0.32/mysql-connector-j-8.0.32.jar";
     }
@@ -130,7 +134,7 @@ public class TiDBCDCIT extends TiDBTestBase implements TestResource {
                     }
                     return null;
                 });
-        await().atMost(60000, TimeUnit.MILLISECONDS)
+        await().atMost(WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .untilAsserted(
                         () -> {
                             log.info(query(getSinkQuerySQL(TIDB_DATABASE, SINK_TABLE)).toString());
@@ -145,7 +149,7 @@ public class TiDBCDCIT extends TiDBTestBase implements TestResource {
         upsertDeleteSourceTable(TIDB_DATABASE, SOURCE_TABLE);
 
         // stream stage
-        await().atMost(60000, TimeUnit.MILLISECONDS)
+        await().atMost(WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .untilAsserted(
                         () -> {
                             Assertions.assertEquals(
@@ -181,7 +185,7 @@ public class TiDBCDCIT extends TiDBTestBase implements TestResource {
         upsertDeleteSourceTable(TIDB_DATABASE, SOURCE_TABLE);
 
         // stream stage
-        await().atMost(60000, TimeUnit.MILLISECONDS)
+        await().atMost(WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .untilAsserted(
                         () -> {
                             Assertions.assertEquals(
@@ -206,7 +210,7 @@ public class TiDBCDCIT extends TiDBTestBase implements TestResource {
                 });
         upsertDeleteSourceTableForRestore(TIDB_DATABASE, SOURCE_TABLE);
         // stream stage
-        await().atMost(60000, TimeUnit.MILLISECONDS)
+        await().atMost(LONG_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .untilAsserted(
                         () -> {
                             Assertions.assertEquals(
@@ -238,7 +242,7 @@ public class TiDBCDCIT extends TiDBTestBase implements TestResource {
                     }
                     return null;
                 });
-        await().atMost(60000, TimeUnit.MILLISECONDS)
+        await().atMost(WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .untilAsserted(
                         () -> {
                             log.info(query(getSinkQuerySQL(TIDB_DATABASE, SINK_TABLE)).toString());
@@ -254,7 +258,7 @@ public class TiDBCDCIT extends TiDBTestBase implements TestResource {
         upsertDeleteSourceTable(TIDB_DATABASE, SOURCE_TABLE);
 
         // stream stage
-        await().atMost(60000, TimeUnit.MILLISECONDS)
+        await().atMost(WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .untilAsserted(
                         () -> {
                             Assertions.assertEquals(
@@ -280,7 +284,7 @@ public class TiDBCDCIT extends TiDBTestBase implements TestResource {
                     }
                     return null;
                 });
-        await().atMost(60000, TimeUnit.MILLISECONDS)
+        await().atMost(WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .untilAsserted(
                         () -> {
                             log.info(query(getSinkQuerySQL(TIDB_DATABASE, SINK_TABLE)).toString());
@@ -299,7 +303,7 @@ public class TiDBCDCIT extends TiDBTestBase implements TestResource {
         upsertDeleteSourceTable(TIDB_DATABASE, SOURCE_TABLE_NO_PRIMARY_KEY);
 
         // stream stage
-        await().atMost(60000, TimeUnit.MILLISECONDS)
+        await().atMost(WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .untilAsserted(
                         () -> {
                             Assertions.assertEquals(

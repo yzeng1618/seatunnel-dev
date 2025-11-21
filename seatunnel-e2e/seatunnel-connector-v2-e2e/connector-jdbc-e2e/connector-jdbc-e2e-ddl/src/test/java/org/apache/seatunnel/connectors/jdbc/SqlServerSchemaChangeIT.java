@@ -19,6 +19,7 @@ package org.apache.seatunnel.connectors.jdbc;
 
 import org.apache.seatunnel.shade.com.google.common.collect.Lists;
 
+import org.testcontainers.containers.Container;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -107,45 +108,88 @@ public class SqlServerSchemaChangeIT extends AbstractSchemaChangeBaseIT {
         try {
             // This set of commands prepares for the subsequent enabling of the external user
             // enabled configuration (for XA transaction support)
-            container.execInContainer(
-                    "/opt/mssql-tools18/bin/sqlcmd",
-                    "-S",
-                    "localhost",
-                    "-U",
-                    SQLSERVER_USER,
-                    "-P",
-                    SQLSERVER_PASSWORD,
-                    "-Q",
-                    "EXEC sp_configure 'show advanced options', 1; RECONFIGURE;",
-                    "-C");
+            Container.ExecResult result =
+                    container.execInContainer(
+                            "/opt/mssql-tools18/bin/sqlcmd",
+                            "-S",
+                            "localhost",
+                            "-U",
+                            SQLSERVER_USER,
+                            "-P",
+                            SQLSERVER_PASSWORD,
+                            "-Q",
+                            "EXEC sp_configure 'show advanced options', 1; RECONFIGURE;",
+                            "-C");
+            if (result.getExitCode() != 0) {
+                log.error("Enable show advanced options failed: {}", result.getStderr());
+                throw new RuntimeException("Enable show advanced options failed");
+            }
 
             // Enable external user access permissions, which is a requirement for SQL Server to
             // support XA distributed transactions.
-            container.execInContainer(
-                    "/opt/mssql-tools18/bin/sqlcmd",
-                    "-S",
-                    "localhost",
-                    "-U",
-                    SQLSERVER_USER,
-                    "-P",
-                    SQLSERVER_PASSWORD,
-                    "-Q",
-                    "EXEC sp_configure 'external user enabled', 1; RECONFIGURE;",
-                    "-C");
+            result =
+                    container.execInContainer(
+                            "/opt/mssql-tools18/bin/sqlcmd",
+                            "-S",
+                            "localhost",
+                            "-U",
+                            SQLSERVER_USER,
+                            "-P",
+                            SQLSERVER_PASSWORD,
+                            "-Q",
+                            "EXEC sp_configure 'external user enabled', 1; RECONFIGURE;",
+                            "-C");
+            if (result.getExitCode() != 0) {
+                log.error("Enable external user failed: {}", result.getStderr());
+                throw new RuntimeException("Enable external user failed");
+            }
 
             log.info("Installing stored procedures sp_sqljdbc_xa_install.");
-            container.execInContainer(
-                    "/opt/mssql-tools18/bin/sqlcmd",
-                    "-S",
-                    "localhost",
-                    "-U",
-                    SQLSERVER_USER,
-                    "-P",
-                    SQLSERVER_PASSWORD,
-                    "-Q",
-                    "IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'xp_sqljdbc_xa_init_ex') "
-                            + "EXEC sp_sqljdbc_xa_install",
-                    "-C");
+            String xaInstallAndCheck =
+                    "USE master; "
+                            + "IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'xp_sqljdbc_xa_init_ex') "
+                            + "    EXEC sp_sqljdbc_xa_install; "
+                            + "IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'xp_sqljdbc_xa_init_ex') "
+                            + "    RAISERROR('xp_sqljdbc_xa_init_ex still missing after sp_sqljdbc_xa_install', 16, 1);";
+
+            result =
+                    container.execInContainer(
+                            "/opt/mssql-tools18/bin/sqlcmd",
+                            "-S",
+                            "localhost",
+                            "-U",
+                            SQLSERVER_USER,
+                            "-P",
+                            SQLSERVER_PASSWORD,
+                            "-Q",
+                            xaInstallAndCheck,
+                            "-C");
+            if (result.getExitCode() != 0) {
+                log.error("XA procedure installation/check failed: {}", result.getStderr());
+                throw new RuntimeException("XA procedure installation/check failed");
+            }
+
+            String grantXaRole =
+                    "USE master; "
+                            + "IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = 'SqlJDBCXAUser') "
+                            + "    CREATE ROLE [SqlJDBCXAUser]; "
+                            + "IF IS_ROLEMEMBER('SqlJDBCXAUser', 'sa') <> 1 "
+                            + "    EXEC sp_addrolemember [SqlJDBCXAUser], 'sa';";
+            result =
+                    container.execInContainer(
+                            "/opt/mssql-tools18/bin/sqlcmd",
+                            "-S",
+                            "localhost",
+                            "-U",
+                            SQLSERVER_USER,
+                            "-P",
+                            SQLSERVER_PASSWORD,
+                            "-Q",
+                            grantXaRole,
+                            "-C");
+            if (result.getExitCode() != 0) {
+                log.warn("Grant SqlJDBCXAUser role for sa failed: {}", result.getStderr());
+            }
         } catch (IOException | InterruptedException e) {
             log.error("XA procedure installation failed: ", e);
             throw new RuntimeException(e);
