@@ -17,6 +17,7 @@
 
 package org.apache.seatunnel.connectors.seatunnel.jdbc.internal.dialect.mysql;
 
+import org.apache.seatunnel.connectors.seatunnel.jdbc.config.JdbcConnectionConfig;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.internal.dialect.DatabaseIdentifier;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.internal.dialect.JdbcDialect;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.internal.dialect.JdbcDialectFactory;
@@ -50,5 +51,13 @@ public class MySqlDialectFactory implements JdbcDialectFactory {
             return new StarRocksDialect(fieldIde);
         }
         return new MysqlDialect(fieldIde);
+    }
+
+    @Override
+    public JdbcDialect create(
+            @Nonnull String compatibleMode,
+            String fieldIde,
+            JdbcConnectionConfig jdbcConnectionConfig) {
+        return create(compatibleMode, fieldIde);
     }
 }
