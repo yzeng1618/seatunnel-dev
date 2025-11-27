@@ -33,11 +33,11 @@ import ChangeLog from '../changelog/connector-jdbc.md';
 |-------------------------------------------|---------|------|------------------------------|
 | url                                       | String  | 是    | -                            |
 | driver                                    | String  | 是    | -                            |
-| user                                      | String  | 否    | -                            |
+| username                                  | String  | 否    | -                            |
 | password                                  | String  | 否    | -                            |
 | query                                     | String  | 否    | -                            |
 | compatible_mode                           | String  | 否    | -                            |
-| dialect                                   | String  | 否    | -                            | 
+| dialect                                   | String  | 否    | -                            |
 | database                                  | String  | 否    | -                            |
 | table                                     | String  | 否    | -                            |
 | primary_keys                              | Array   | 否    | -                            |
@@ -53,11 +53,13 @@ import ChangeLog from '../changelog/connector-jdbc.md';
 | field_ide                                 | String  | 否    | -                            |
 | properties                                | Map     | 否    | -                            |
 | common-options                            |         | 否    | -                            |
+| server_time_zone                          | String  | 否    | -                            |
 | schema_save_mode                          | Enum    | 否    | CREATE_SCHEMA_WHEN_NOT_EXIST |
 | data_save_mode                            | Enum    | 否    | APPEND_DATA                  |
 | custom_sql                                | String  | 否    | -                            |
 | enable_upsert                             | Boolean | 否    | true                         |
 | use_copy_statement                        | Boolean | 否    | false                        |
+| create_index                              | Boolean | 否    | true                         |
 | access_key_id                             | String  | 否       |                              |
 | secret_access_key                         | String  | 否       |                              |
 | region                                    | String  | 否       |                              |
@@ -224,6 +226,16 @@ Sink插件常用参数，请参考 [Sink常用选项](../sink-common-options.md)
 驱动程序 `org.postgresql.Driver`
 
 注意：不支持 `MAP`、`ARRAY`、`ROW`类型
+
+### create_index [boolean]
+
+自动创建表时是否创建索引（包括主键和任何其他索引）。在迁移大型表时，可以使用此选项来提高 JDBC 写入的性能。
+
+注意：请注意，这会牺牲读取性能，因此在表迁移后需要手动创建索引以提高读取性能
+
+### server_time_zone [string]
+
+数据库服务器的会话时区，例如：`"Asia/Shanghai"` 或 `"UTC"`。它控制在使用 JDBC 驱动程序（如 MySQL）时 `TIMESTAMP` 列在数据库和 JVM 之间的转换方式。如果未设置，驱动程序通常会回退到 JVM 默认时区或其自己的默认值，当数据库服务器在不同的时区运行时，这可能会导致小时偏移。
 
 ### access_key_id [String]
 AWS IAM 认证中所需要的access_key_id 。 该参考仅适用于 dialect="dsql"
