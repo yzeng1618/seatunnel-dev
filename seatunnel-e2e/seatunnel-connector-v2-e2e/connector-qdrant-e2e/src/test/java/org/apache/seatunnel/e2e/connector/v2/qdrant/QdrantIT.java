@@ -62,7 +62,7 @@ public class QdrantIT extends TestSuiteBase implements TestResource {
     private static final String ALIAS = "qdrante2e";
     private static final String SOURCE_COLLECTION = "source_collection";
     private static final String SINK_COLLECTION = "sink_collection";
-    private static final String IMAGE = "qdrant/qdrant:v1.15.0";
+    private static final String IMAGE = "qdrant/qdrant:latest";
     private QdrantContainer container;
     private QdrantClient qdrantClient;
 
@@ -71,9 +71,16 @@ public class QdrantIT extends TestSuiteBase implements TestResource {
     public void startUp() throws Exception {
         this.container = new QdrantContainer(IMAGE).withNetwork(NETWORK).withNetworkAliases(ALIAS);
         Startables.deepStart(Stream.of(this.container)).join();
-        Awaitility.given().ignoreExceptions().await().atMost(10L, TimeUnit.SECONDS);
         this.initQdrant();
         this.initSourceData();
+        Awaitility.given()
+                .ignoreExceptions()
+                .await()
+                .atMost(30L, TimeUnit.SECONDS)
+                .untilAsserted(
+                        () ->
+                                Assertions.assertEquals(
+                                        10L, qdrantClient.countAsync(SOURCE_COLLECTION).get()));
     }
 
     private void initQdrant() {
@@ -120,13 +127,7 @@ public class QdrantIT extends TestSuiteBase implements TestResource {
             points.add(pointStruct.build());
         }
 
-        qdrantClient
-                .upsertAsync(
-                        Points.UpsertPoints.newBuilder()
-                                .setCollectionName(SOURCE_COLLECTION)
-                                .addAllPoints(points)
-                                .build())
-                .get();
+        qdrantClient.upsertAsync(SOURCE_COLLECTION, points).get();
     }
 
     @AfterAll
@@ -140,6 +141,13 @@ public class QdrantIT extends TestSuiteBase implements TestResource {
             throws IOException, InterruptedException, ExecutionException {
         Container.ExecResult execResult = container.executeJob("/qdrant-to-qdrant.conf");
         Assertions.assertEquals(0, execResult.getExitCode());
-        Assertions.assertEquals(10, qdrantClient.countAsync(SINK_COLLECTION).get());
+        Awaitility.given()
+                .ignoreExceptions()
+                .await()
+                .atMost(30L, TimeUnit.SECONDS)
+                .untilAsserted(
+                        () ->
+                                Assertions.assertEquals(
+                                        10L, qdrantClient.countAsync(SINK_COLLECTION).get()));
     }
 }

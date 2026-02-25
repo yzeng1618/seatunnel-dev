@@ -132,10 +132,14 @@ public class QdrantBatchWriter {
                             Points.UpsertPoints.newBuilder()
                                     .setCollectionName(collectionName)
                                     .addAllPoints(qdrantDataCache)
+                                    .setWait(true)
                                     .build())
                     .get();
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException("Upsert failed", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Upsert interrupted, collection: " + collectionName, e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Upsert failed, collection: " + collectionName, e);
         }
     }
 
